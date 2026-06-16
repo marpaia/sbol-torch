@@ -60,15 +60,15 @@ metrics = st.run_training(config)
 
 | Config | What it does |
 |--------|--------------|
-| [`finetune_expression.yaml`](examples/configs/finetune_expression.yaml) | Frozen DNABERT-2 backbone feeding a regression head. |
-| [`pretrain_mlm.yaml`](examples/configs/pretrain_mlm.yaml) | From-scratch masked-LM pretraining; writes a reusable backbone. |
-| [`finetune_structure_aware.yaml`](examples/configs/finetune_structure_aware.yaml) | Sequence + feature-boundary markers. |
-| [`train_graph.yaml`](examples/configs/train_graph.yaml) | Graph transformer over the composition graph. |
+| [`finetune_expression.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/finetune_expression.yaml) | Frozen DNABERT-2 backbone feeding a regression head. |
+| [`pretrain_mlm.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/pretrain_mlm.yaml) | From-scratch masked-LM pretraining; writes a reusable backbone. |
+| [`finetune_structure_aware.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/finetune_structure_aware.yaml) | Sequence + feature-boundary markers. |
+| [`train_graph.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/train_graph.yaml) | Graph transformer over the composition graph. |
 
 ## Experiment tracking
 
-The two synthetic-data configs ([`train_graph.yaml`](examples/configs/train_graph.yaml)
-and [`finetune_structure_aware.yaml`](examples/configs/finetune_structure_aware.yaml))
+The two synthetic-data configs ([`train_graph.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/train_graph.yaml)
+and [`finetune_structure_aware.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/finetune_structure_aware.yaml))
 ship with [Weights & Biases](https://docs.wandb.ai/) enabled. Set `WANDB_API_KEY`
 in a `.env` at the repo root and run both:
 
@@ -82,18 +82,18 @@ checkpoint as a model artifact.
 
 | Graph transformer | Structure-aware sequence |
 |-------------------|--------------------------|
-| ![train_graph W&B run](docs/images/wandb_train_graph.png) | ![structure_aware W&B run](docs/images/wandb_structure_aware.png) |
+| ![train_graph W&B run](https://raw.githubusercontent.com/marpaia/sbol-torch/master/docs/images/wandb_train_graph.png) | ![structure_aware W&B run](https://raw.githubusercontent.com/marpaia/sbol-torch/master/docs/images/wandb_structure_aware.png) |
 
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
-| [architecture.md](docs/architecture.md) | How the system is built — record type, plug points, engine, data flow. |
-| [capabilities.md](docs/capabilities.md) | Modalities, objectives, tokenizers, metrics. |
-| [configuration.md](docs/configuration.md) | Complete `RunConfig` reference. |
-| [data.md](docs/data.md) | Data sources, the sbol-db client, materialization, fixtures. |
-| [backbones.md](docs/backbones.md) | Choosing/loading backbones and environment constraints. |
-| [extending.md](docs/extending.md) | Adding a tokenizer, encoder, task, callback, or data source. |
+| [architecture.md](https://github.com/marpaia/sbol-torch/blob/master/docs/architecture.md) | How the system is built — record type, plug points, engine, data flow. |
+| [capabilities.md](https://github.com/marpaia/sbol-torch/blob/master/docs/capabilities.md) | Modalities, objectives, tokenizers, metrics. |
+| [configuration.md](https://github.com/marpaia/sbol-torch/blob/master/docs/configuration.md) | Complete `RunConfig` reference. |
+| [data.md](https://github.com/marpaia/sbol-torch/blob/master/docs/data.md) | Data sources, the sbol-db client, materialization, fixtures. |
+| [backbones.md](https://github.com/marpaia/sbol-torch/blob/master/docs/backbones.md) | Choosing/loading backbones and environment constraints. |
+| [extending.md](https://github.com/marpaia/sbol-torch/blob/master/docs/extending.md) | Adding a tokenizer, encoder, task, callback, or data source. |
 
 ## Develop
 
