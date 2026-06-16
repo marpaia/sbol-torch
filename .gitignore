@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Local materialized corpora and run outputs
+.sboltorch_cache/
+runs/
+*.parquet
+wandb/
+
+# Environment
+.env
+.env.*

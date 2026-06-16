@@ -1,0 +1,39 @@
+# Train a graph transformer over SBOL composition graphs, predicting a target
+# from part composition. Uses the synthetic fixture source so it runs without a
+# populated sbol-db; point `corpus` at sbol_db/local for real data.
+seed: 42
+output_dir: runs/train_graph
+
+corpus:
+  source: synthetic
+  n: 512
+  synthetic_seed: 0
+  label_key: strength        # any non-null value enables labels for the synthetic source
+  cache_dir: .sboltorch_cache
+
+encoder:
+  kind: graph
+
+model:
+  hidden_size: 128
+  arch:
+    num_hidden_layers: 3
+    num_attention_heads: 4
+
+task:
+  kind: supervised
+  objective: regression
+
+splits:
+  strategy: random
+  ratios: [0.8, 0.1, 0.1]
+
+train:
+  batch_size: 32
+  epochs: 30
+  lr: 1.0e-3
+  amp: false
+  early_stop:
+    monitor: val_mae
+    mode: min
+    patience: 5

@@ -1,0 +1,48 @@
+# Train a structure-aware sequence model: the sequence is tokenized with k-mers
+# and each feature span is wrapped with role-keyed boundary tokens (e.g.
+# [promoter] ... [/promoter]) plus an orientation marker. Uses the synthetic
+# fixture source so it runs out of the box.
+seed: 42
+output_dir: runs/finetune_structure_aware
+
+corpus:
+  source: synthetic
+  n: 512
+  label_key: strength
+  cache_dir: .sboltorch_cache
+
+tokenizer:
+  kind: kmer
+  k: 6
+  max_length: 512
+
+encoder:
+  kind: structure_aware
+  mark_orientation: true
+
+model:
+  from_scratch: true        # the structure-aware vocab extends the base k-mer vocab
+  hidden_size: 384
+  arch:
+    num_hidden_layers: 6
+    num_attention_heads: 6
+    intermediate_size: 1536
+    max_position_embeddings: 512
+
+task:
+  kind: supervised
+  objective: regression
+
+splits:
+  strategy: random
+  ratios: [0.8, 0.1, 0.1]
+
+train:
+  batch_size: 16
+  epochs: 30
+  lr: 5.0e-4
+  amp: true
+  early_stop:
+    monitor: val_mae
+    mode: min
+    patience: 5

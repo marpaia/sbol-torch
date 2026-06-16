@@ -1,0 +1,51 @@
+# Pretrain a DNA masked-language model from scratch on an unlabeled SBOL corpus,
+# using our own k-mer tokenizer. The resulting backbone is written to
+# `<output_dir>/backbone` and can be set as `model.backbone` in a supervised
+# config to fine-tune. For continued pretraining instead, set
+# `model.from_scratch: false` and point `model.backbone` at a pretrained id.
+seed: 42
+output_dir: runs/pretrain_mlm
+
+corpus:
+  source: sbol_db
+  base_url: http://localhost:8080
+  sbol_class: http://sbols.org/v3#Sequence
+  cache_dir: .sboltorch_cache
+  # no label_key: pretraining is unlabeled
+
+tokenizer:
+  kind: kmer
+  k: 6
+  max_length: 512
+
+encoder:
+  kind: sequence
+
+model:
+  from_scratch: true
+  hidden_size: 384
+  arch:
+    model_type: bert
+    num_hidden_layers: 6
+    num_attention_heads: 6
+    intermediate_size: 1536
+    max_position_embeddings: 512
+
+task:
+  kind: mlm
+  mlm_probability: 0.15
+
+splits:
+  strategy: random
+  ratios: [0.9, 0.05, 0.05]
+
+train:
+  batch_size: 32
+  epochs: 20
+  lr: 5.0e-4
+  weight_decay: 0.01
+  amp: true
+  early_stop:
+    monitor: val_loss
+    mode: min
+    patience: 3

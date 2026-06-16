@@ -1,0 +1,63 @@
+[project]
+# Distribution name on PyPI is hyphenated (`pip install sbol-torch`); the import
+# package is `sboltorch` (commonly `import sboltorch as st`).
+name = "sbol-torch"
+version = "0.1.0"
+description = "A PyTorch library for synthetic biology and biodesign automation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Mike Arpaia", email = "mike@arpaia.co" }]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "pyarrow>=15",
+    "numpy>=1.26",
+    "pyyaml>=6",
+    "rdflib>=7",
+    "torch>=2.2",
+    # Pin to the 4.x line: transformers 5.x breaks the custom/ESM modeling code
+    # the pretrained DNA backbones (Nucleotide Transformer, DNABERT) target.
+    "transformers>=4.40,<5",
+    "tokenizers>=0.19",
+    "einops>=0.7",
+    "torch-geometric>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-mock>=3.12",
+    "respx>=0.21",
+    "black>=24.3",
+    "isort>=5.13",
+    "flake8>=7",
+    "mypy>=1.9",
+    "pre-commit>=3.7",
+    "types-PyYAML",
+]
+
+[project.scripts]
+sboltorch = "sboltorch.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sboltorch"]
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+files = ["src/sboltorch"]

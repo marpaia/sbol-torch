@@ -1,0 +1,46 @@
+# Fine-tune a frozen DNABERT-2 backbone to predict expression from sequence.
+# Pulls Component objects with a promoter role from a running sbol-db instance,
+# reading the regression target from the `measure` predicate in each object.
+seed: 42
+output_dir: runs/finetune_expression
+
+corpus:
+  source: sbol_db
+  base_url: http://localhost:8080
+  sbol_class: http://sbols.org/v3#Sequence
+  role: SO:0000167          # promoter; expand via /ontology/descendants if needed
+  label_key: measure        # local-name of the predicate holding the numeric target
+  cache_dir: .sboltorch_cache
+
+tokenizer:
+  kind: hf
+  model_name: zhihan1996/DNABERT-2-117M
+  max_length: 512
+
+encoder:
+  kind: sequence
+
+model:
+  backbone: zhihan1996/DNABERT-2-117M
+  dropout: 0.1
+
+task:
+  kind: frozen              # freeze backbone, train the regression head only
+  objective: regression
+  target_transform: log1p
+
+splits:
+  strategy: stratified
+  ratios: [0.8, 0.1, 0.1]
+
+train:
+  batch_size: 16
+  epochs: 30
+  lr: 1.0e-3
+  weight_decay: 0.01
+  grad_accum: 1
+  amp: true
+  early_stop:
+    monitor: val_mae
+    mode: min
+    patience: 5

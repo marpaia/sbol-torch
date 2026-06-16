@@ -1,0 +1,154 @@
+"""Run configuration.
+
+A single Pydantic-validated object fully specifies a run. Every field has a
+sensible default so configs stay small, and the whole resolved object is
+serialized into the run output directory for reproducibility.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel, Field, model_validator
+
+from .exceptions import ConfigError
+
+
+class CorpusConfig(BaseModel):
+    source: Literal["sbol_db", "local", "synthetic"] = "sbol_db"
+
+    # sbol_db source
+    base_url: str | None = None
+    username: str | None = None
+    password: str | None = None
+    sbol_class: str | None = None
+    role: str | None = None
+    document_id: str | None = None
+
+    # local source
+    path: str | None = None
+    fmt: Literal["fasta", "sbol", "auto"] = "auto"
+
+    # synthetic source (in-memory fixture generator, for development/testing)
+    n: int = 64
+    synthetic_seed: int = 0
+
+    # Where to read the supervised label from. For sbol_db this is a predicate
+    # local-name looked up in the object's `data` slice; for FASTA it is parsed
+    # from the header. None means unlabeled (pretraining).
+    label_key: str | None = None
+
+    cache_dir: str = ".sboltorch_cache"
+
+    @model_validator(mode="after")
+    def _check_source(self) -> "CorpusConfig":
+        if self.source == "sbol_db" and not self.base_url:
+            raise ConfigError("corpus.base_url is required when source is 'sbol_db'")
+        if self.source == "local" and not self.path:
+            raise ConfigError("corpus.path is required when source is 'local'")
+        return self
+
+
+class TokenizerConfig(BaseModel):
+    kind: Literal["hf", "kmer", "char"] = "hf"
+    k: int = 6
+    stride: int = 1
+    max_length: int = 512
+    model_name: str = "zhihan1996/DNABERT-2-117M"
+
+
+class EncoderConfig(BaseModel):
+    kind: Literal["sequence", "structure_aware", "graph"] = "sequence"
+    # structure_aware: role IRIs that get dedicated boundary markers (None = a
+    # default SO set); whether to mark reverse-complement features.
+    roles: tuple[str, ...] | None = None
+    mark_orientation: bool = True
+
+
+class ArchConfig(BaseModel):
+    """Architecture for a from-scratch encoder (used when ``model.from_scratch``)."""
+
+    model_type: str = "bert"
+    num_hidden_layers: int = 6
+    num_attention_heads: int = 6
+    intermediate_size: int = 1536
+    max_position_embeddings: int = 1024
+
+
+class ModelConfig(BaseModel):
+    # A HuggingFace hub id, or a local path to a checkpoint saved by a prior run
+    # (e.g. the backbone written out by an MLM pretraining run).
+    backbone: str = "zhihan1996/DNABERT-2-117M"
+    hidden_size: int = 768
+    dropout: float = 0.1
+    # When true, build the encoder from ``arch`` + the tokenizer vocab instead of
+    # downloading pretrained weights — the from-scratch MLM pretraining path.
+    from_scratch: bool = False
+    arch: ArchConfig = Field(default_factory=ArchConfig)
+
+
+class TaskConfig(BaseModel):
+    kind: Literal["supervised", "mlm", "frozen"] = "frozen"
+    objective: Literal["regression", "classification"] = "regression"
+    num_classes: int | None = None
+    target_transform: Literal["none", "log1p"] = "none"
+    mlm_probability: float = 0.15
+
+    @model_validator(mode="after")
+    def _check_classes(self) -> "TaskConfig":
+        if self.objective == "classification" and not self.num_classes:
+            raise ConfigError("task.num_classes is required for classification")
+        return self
+
+
+class EarlyStopConfig(BaseModel):
+    monitor: str = "val_loss"
+    patience: int = 5
+    mode: Literal["min", "max"] = "min"
+    min_delta: float = 0.0
+
+
+class SplitConfig(BaseModel):
+    strategy: Literal["random", "stratified"] = "random"
+    ratios: tuple[float, float, float] = (0.8, 0.1, 0.1)
+
+    @model_validator(mode="after")
+    def _check_ratios(self) -> "SplitConfig":
+        if abs(sum(self.ratios) - 1.0) > 1e-6:
+            raise ConfigError(f"splits.ratios must sum to 1.0, got {self.ratios}")
+        return self
+
+
+class TrainConfig(BaseModel):
+    batch_size: int = 16
+    epochs: int = 10
+    lr: float = 2e-5
+    weight_decay: float = 0.01
+    grad_accum: int = 1
+    max_grad_norm: float = 1.0
+    amp: bool = True
+    num_workers: int = 0
+    early_stop: EarlyStopConfig | None = None
+
+
+class RunConfig(BaseModel):
+    seed: int = 42
+    output_dir: str = "runs/default"
+    corpus: CorpusConfig
+    tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)
+    encoder: EncoderConfig = Field(default_factory=EncoderConfig)
+    model: ModelConfig = Field(default_factory=ModelConfig)
+    task: TaskConfig = Field(default_factory=TaskConfig)
+    splits: SplitConfig = Field(default_factory=SplitConfig)
+    train: TrainConfig = Field(default_factory=TrainConfig)
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> "RunConfig":
+        text = Path(path).read_text()
+        raw = yaml.safe_load(text) or {}
+        return cls.model_validate(raw)
+
+    def to_yaml(self) -> str:
+        return yaml.safe_dump(self.model_dump(mode="json"), sort_keys=False)
