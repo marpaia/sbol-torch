@@ -17,10 +17,10 @@ slice when `label_key` is set.
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `list_objects(...)` | `GET /objects/list` | Keyset-paginated stream of object records (≤5000/page). |
+| `list_objects(...)` | `GET /objects/list` | Keyset-paginated stream of object records (up to 5000 per page). |
 | `get_object(iri)` | `GET /objects` | Resolve one object by IRI. |
 | `lookup_objects(iris)` | `POST /objects/lookup` | Resolve up to 1000 IRIs at once. |
-| `neighborhood(iri, depth, direction, predicates)` | `GET /objects/neighborhood` | Bounded graph traversal → `GraphSlice`. |
+| `neighborhood(iri, depth, direction, predicates)` | `GET /objects/neighborhood` | Bounded graph traversal, returning a `GraphSlice`. |
 | `search_sequence(pattern, ...)` | `GET /sequences/search` | k-mer-indexed substring + reverse-complement search. |
 | `ontology_descendants(iri)` | `GET /ontology/descendants` | Transitive `is_a` expansion of a role/type term. |
 
@@ -51,16 +51,16 @@ ACGTACGT...
 
 ## Synthetic (`source: synthetic`)
 
-`sboltorch.data.synthetic` generates deterministic transcriptional units —
-promoter → RBS → CDS → terminator — as rich `SbolObject`s with sequence,
-features (sub-components with `Range` locations, roles, orientation), and a
-composition `GraphSlice`. Parts are drawn from a shared catalog, so the same part
-recurs across components and the composition graphs have real structure. A
-per-promoter "strength" provides a learnable supervised label.
+`sboltorch.data.synthetic` generates deterministic transcriptional units, each
+ordering a promoter, RBS, CDS, and terminator, as `SbolObject`s carrying
+sequence, features (sub-components with `Range` locations, roles, orientation),
+and a composition `GraphSlice`. Parts come from a shared catalog, so a given part
+recurs across components and the composition graphs overlap rather than standing
+alone. A per-promoter "strength" provides a learnable supervised label.
 
 ```python
 from sboltorch.data import generate_components, SyntheticCorpus, write_sbol_turtle
-components = generate_components(128, seed=0)        # rich SbolObjects
+components = generate_components(128, seed=0)        # SbolObjects with sequence, features, graph
 write_sbol_turtle(components, "out.ttl")             # serialize to SBOL3 Turtle
 ```
 

@@ -23,6 +23,7 @@ config = RunConfig.from_yaml("examples/configs/train_graph.yaml")
 | `task` | object | defaults | Training objective. |
 | `splits` | object | defaults | Train/val/test partitioning. |
 | `train` | object | defaults | Optimization loop. |
+| `wandb` | object | defaults | Weights & Biases tracking (disabled by default). |
 
 ## `corpus`
 
@@ -38,7 +39,7 @@ config = RunConfig.from_yaml("examples/configs/train_graph.yaml")
 | `fmt` | `fasta` \| `sbol` \| `auto` | `auto` | Local file format; `auto` infers from extension. |
 | `n` | int | `64` | Number of components when `source: synthetic`. |
 | `synthetic_seed` | int | `0` | Seed for the synthetic generator. |
-| `label_key` | str | `null` | Where the supervised label comes from: an sbol-db predicate local-name, or a FASTA header `key=value`. `null` ⇒ unlabeled (pretraining). For the synthetic source, any non-null value enables labels. |
+| `label_key` | str | `null` | Where the supervised label comes from: an sbol-db predicate local-name, or a FASTA header `key=value`. `null` means unlabeled (pretraining). For the synthetic source, any non-null value enables labels. |
 | `cache_dir` | str | `.sboltorch_cache` | Where the materialized Parquet corpus is stored. |
 
 See [data.md](data.md) for the corpus sources in depth.
@@ -58,7 +59,7 @@ See [data.md](data.md) for the corpus sources in depth.
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `kind` | `sequence` \| `structure_aware` \| `graph` | `sequence` | Input modality. |
-| `roles` | list[str] | `null` | `structure_aware`: role IRIs that get dedicated boundary markers. `null` ⇒ a default Sequence Ontology set (promoter/RBS/CDS/terminator). |
+| `roles` | list[str] | `null` | `structure_aware`: role IRIs that get dedicated boundary markers. `null` falls back to a default Sequence Ontology set (promoter/RBS/CDS/terminator). |
 | `mark_orientation` | bool | `true` | `structure_aware`: emit a marker for reverse-complement features. |
 
 ## `model`
@@ -91,7 +92,7 @@ See [data.md](data.md) for the corpus sources in depth.
 | `target_transform` | `none` \| `log1p` | `none` | `log1p` trains regression in log space and reports metrics in the original space. |
 | `mlm_probability` | float | `0.15` | Fraction of content tokens masked (`mlm` only). |
 
-See [capabilities.md](capabilities.md) for how modality × objective combine.
+See [capabilities.md](capabilities.md) for how modality and objective combine.
 
 ## `splits`
 
@@ -127,3 +128,25 @@ Splitting is a pure function of `(n, ratios, seed, strategy)` — reproducible a
 
 Monitor names are `train_loss`, `val_loss`, and the task's validation metrics
 (`val_mae` / `val_mse` / `val_r2`, `val_accuracy`, or `val_masked_accuracy`).
+
+## `wandb`
+
+Tracking is off unless `enabled: true`. When on, the `WandbLogger` callback logs
+per-step `train/step_loss` and `train/lr`, per-epoch `train/*` and `val/*`
+metrics, the resolved `RunConfig` as the run config, and the corpus fingerprint,
+object count, split sizes, and seed as run-summary lineage. The API key is read
+from the `WANDB_API_KEY` environment variable and is never a config field.
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | Turn tracking on. |
+| `project` | str | `null` | W&B project. |
+| `entity` | str | `null` | W&B entity (team/user). |
+| `mode` | `online` \| `offline` \| `disabled` | `online` | `offline` logs locally for later sync; `disabled` is a no-op backend. |
+| `run_name` | str | `null` | Run display name. |
+| `tags` | list[str] | `[]` | Run tags. |
+| `group` | str | `null` | Run group. |
+| `job_type` | str | `null` | Run job type. |
+| `watch_model` | bool | `false` | Log gradient/parameter histograms via `wandb.watch` (heavy on large backbones). |
+| `log_freq` | int | `100` | Steps between per-step metric flushes and gradient logs. |
+| `log_model` | bool | `true` | Push `best.pt` + `config.resolved.yaml` as a `model` Artifact (aliased `best` and the corpus fingerprint) at train end. |

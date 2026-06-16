@@ -121,6 +121,32 @@ class SplitConfig(BaseModel):
         return self
 
 
+class WandbConfig(BaseModel):
+    """Weights & Biases experiment tracking. Disabled by default.
+
+    The API key is read from the ``WANDB_API_KEY`` environment variable and is
+    never a config field. The resolved ``RunConfig`` is logged as the W&B run
+    config, so the dashboard inherits the same reproducibility anchor as the
+    serialized ``config.resolved.yaml``.
+    """
+
+    enabled: bool = False
+    project: str | None = None
+    entity: str | None = None
+    mode: Literal["online", "offline", "disabled"] = "online"
+    run_name: str | None = None
+    tags: tuple[str, ...] = ()
+    group: str | None = None
+    job_type: str | None = None
+    # Log gradient/parameter histograms via wandb.watch. Heavy on large
+    # backbones, so opt-in.
+    watch_model: bool = False
+    # Steps between per-step metric flushes and gradient logs.
+    log_freq: int = 100
+    # Push the best checkpoint as a model Artifact at train end.
+    log_model: bool = True
+
+
 class TrainConfig(BaseModel):
     batch_size: int = 16
     epochs: int = 10
@@ -143,6 +169,7 @@ class RunConfig(BaseModel):
     task: TaskConfig = Field(default_factory=TaskConfig)
     splits: SplitConfig = Field(default_factory=SplitConfig)
     train: TrainConfig = Field(default_factory=TrainConfig)
+    wandb: WandbConfig = Field(default_factory=WandbConfig)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "RunConfig":

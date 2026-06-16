@@ -37,3 +37,14 @@ train:
     monitor: val_mae
     mode: min
     patience: 5
+
+# Experiment tracking. Requires WANDB_API_KEY in the environment (see
+# examples/run_wandb_examples.py). Set enabled: false to run without an account.
+wandb:
+  enabled: true
+  project: sbol-torch-examples
+  run_name: train_graph
+  mode: online
+  watch_model: true
+  log_freq: 10
+  tags: [example, graph]

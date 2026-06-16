@@ -4,21 +4,23 @@ A PyTorch library for synthetic biology and biodesign automation.
 
 Installed as `sbol-torch`, imported as `sboltorch` (commonly `import sboltorch as st`).
 
-sboltorch pulls designs from a running [sbol-db](https://github.com/marpaia/sbol-db)
+sbol-torch pulls designs from a running [sbol-db](https://github.com/marpaia/sbol-db)
 instance (or local SBOL/FASTA files), normalizes them into a single record type,
 and trains transformer models against them. The input modality, tokenizer, and
-training objective are all configuration — not forks of the pipeline.
+training objective are all set in configuration, so trying a new combination
+never means forking the pipeline.
 
 ## Capabilities
 
 | Axis | Options |
 |------|---------|
-| **Data sources** | sbol-db REST API · local SBOL/FASTA files · synthetic generator |
-| **Tokenizers** | pretrained HuggingFace (`hf`) · overlapping k-mer · IUPAC character |
-| **Modalities** | `sequence` · `structure_aware` (feature boundaries) · `graph` (PyG composition transformer) |
-| **Objectives** | `supervised` fine-tuning · `frozen`-backbone head · `mlm` pretraining (from-scratch & continued) |
-| **Engine** | raw-PyTorch loop · early stopping · checkpointing · AMP · LR schedule · gradient accumulation |
-| **Reproducibility** | one validated config per run · seeded splits · content-fingerprinted Parquet cache |
+| **Data sources** | sbol-db REST API, local SBOL/FASTA files, or a synthetic generator |
+| **Tokenizers** | pretrained HuggingFace (`hf`), overlapping k-mer, or IUPAC character |
+| **Modalities** | `sequence`, `structure_aware` (feature boundaries), `graph` (PyG composition transformer) |
+| **Objectives** | `supervised` fine-tuning, `frozen`-backbone head, `mlm` pretraining (from-scratch and continued) |
+| **Engine** | raw-PyTorch loop, early stopping, checkpointing, AMP, LR schedule, gradient accumulation |
+| **Tracking** | per-epoch `metrics.jsonl`, optional [Weights & Biases](https://docs.wandb.ai/) (scalars, config, lineage, model artifact) |
+| **Reproducibility** | one validated config per run, seeded splits, content-fingerprinted Parquet cache |
 
 ## Install
 
@@ -58,10 +60,29 @@ metrics = st.run_training(config)
 
 | Config | What it does |
 |--------|--------------|
-| [`finetune_expression.yaml`](examples/configs/finetune_expression.yaml) | Frozen DNABERT-2 backbone → regression head. |
+| [`finetune_expression.yaml`](examples/configs/finetune_expression.yaml) | Frozen DNABERT-2 backbone feeding a regression head. |
 | [`pretrain_mlm.yaml`](examples/configs/pretrain_mlm.yaml) | From-scratch masked-LM pretraining; writes a reusable backbone. |
 | [`finetune_structure_aware.yaml`](examples/configs/finetune_structure_aware.yaml) | Sequence + feature-boundary markers. |
 | [`train_graph.yaml`](examples/configs/train_graph.yaml) | Graph transformer over the composition graph. |
+
+## Experiment tracking
+
+The two synthetic-data configs ([`train_graph.yaml`](examples/configs/train_graph.yaml)
+and [`finetune_structure_aware.yaml`](examples/configs/finetune_structure_aware.yaml))
+ship with [Weights & Biases](https://docs.wandb.ai/) enabled. Set `WANDB_API_KEY`
+in a `.env` at the repo root and run both:
+
+```bash
+python examples/run_wandb_examples.py
+```
+
+Each run logs per-step loss and learning rate, per-epoch train/val metrics, the
+resolved config, the corpus fingerprint and split sizes as lineage, and the best
+checkpoint as a model artifact.
+
+| Graph transformer | Structure-aware sequence |
+|-------------------|--------------------------|
+| ![train_graph W&B run](docs/images/wandb_train_graph.png) | ![structure_aware W&B run](docs/images/wandb_structure_aware.png) |
 
 ## Documentation
 

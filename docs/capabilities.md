@@ -1,8 +1,8 @@
 # Capabilities
 
-sboltorch trains transformer models on SBOL data across three input modalities
-and three training objectives, over three data sources, with three tokenizers.
-Each axis is a configuration choice, not a separate code path.
+sbol-torch trains transformer models on SBOL data. The input modality, training
+objective, data source, and tokenizer are independent axes, each picked in
+configuration. Changing one reuses the same code path rather than branching it.
 
 ## Input modalities (`encoder.kind`)
 
@@ -16,8 +16,8 @@ Each axis is a configuration choice, not a separate code path.
 - **Structure-aware** wraps each annotated feature span with role-keyed boundary
   markers (e.g. `[promoter] … [/promoter]`) and a reverse-complement marker,
   injected inline as tokens. The markers extend the base tokenizer's vocabulary,
-  so the model sees SBOL structure alongside sequence. Pairs naturally with a
-  `from_scratch` model (or a pretrained backbone with resized embeddings).
+  so the model sees SBOL structure alongside sequence. Use it with a
+  `from_scratch` model, or a pretrained backbone whose embeddings you've resized.
 - **Graph** turns each object's neighborhood into a graph: nodes carry a
   `(sbol_class, role, identity)` feature triple, edges carry a predicate type,
   edges are bidirectional, and a global mean pool feeds the task head.
@@ -39,7 +39,7 @@ All three produce batches consumed by one training engine through a
 - **MLM** masks ~`mlm_probability` of content tokens (80% `<mask>`, 10% random,
   10% unchanged), never masking special tokens.
 
-## Pretrain → fine-tune
+## Pretrain, then fine-tune
 
 An `mlm` run writes its trained encoder to `<output_dir>/backbone/` in
 HuggingFace format. A later `supervised`/`frozen` run loads it by setting
@@ -77,14 +77,14 @@ best checkpoint (by the task's primary metric) is saved to `best.pt`.
 ## What the test suite verifies
 
 `tests/test_learning.py` trains each capability on a learnable signal and asserts
-the loss drops and the model generalizes — not merely that the pipeline runs:
+that the loss drops and the model generalizes, not just that the code runs:
 
 | Capability | Asserted |
 |------------|----------|
-| Supervised sequence (from scratch) | val_loss ↓, `val_r2 > 0.5` |
-| MLM (from scratch) | val_loss ↓, masked accuracy ↑ |
-| Structure-aware | val_loss ↓, `val_r2 > 0.5` |
-| Graph transformer | val_loss ↓, `val_r2 > 0.5` |
+| Supervised sequence (from scratch) | val_loss falls, `val_r2 > 0.5` |
+| MLM (from scratch) | val_loss falls, masked accuracy rises |
+| Structure-aware | val_loss falls, `val_r2 > 0.5` |
+| Graph transformer | val_loss falls, `val_r2 > 0.5` |
 
 Continued pretraining and pretrained-backbone loading are exercised against a
 real hub model in the data/model tests.

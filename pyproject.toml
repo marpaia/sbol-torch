@@ -22,6 +22,7 @@ dependencies = [
     "tokenizers>=0.19",
     "einops>=0.7",
     "torch-geometric>=2.5",
+    "wandb>=0.17",
 ]
 
 [project.optional-dependencies]

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 from torch.utils.data import DataLoader
 
@@ -20,7 +21,7 @@ from .datasets.dataset import Collator, EncodedDataset
 from .datasets.mlm_collator import MlmCollator
 from .datasets.splits import Split, make_split
 from .encoders.base import build_encoder
-from .engine.callbacks import Callback, EarlyStopping, MetricLogger, ModelCheckpoint
+from .engine.callbacks import Callback, EarlyStopping, MetricLogger, ModelCheckpoint, WandbLogger
 from .engine.trainer import Trainer
 from .models import build_model
 from .models.mlm import MaskedLMModel
@@ -61,7 +62,7 @@ def _loader(
     objects: list[SbolObject],
     indices: tuple[int, ...],
     encoder: object,
-    collator: object,
+    collator: Callable[[list[Any]], Any],
     config: RunConfig,
     *,
     shuffle: bool,
@@ -82,8 +83,9 @@ def _build_sequence_run(config: RunConfig, data: PreparedData, task: Task) -> tu
     encoder = build_encoder(config.encoder, tokenizer)
     spec = encoder.output_spec
     model = build_model(config.model, config.task, vocab_size=spec.vocab_size, pad_token_id=spec.pad_token_id)
+    collator: Callable[[list[Any]], Any]
     if config.task.kind == "mlm":
-        collator: object = MlmCollator(tokenizer, mlm_probability=config.task.mlm_probability)
+        collator = MlmCollator(tokenizer, mlm_probability=config.task.mlm_probability)
     else:
         collator = Collator(tokenizer.pad_token_id, with_labels=True, label_dtype=task.label_dtype)
     train_loader = _loader(data.objects, data.split.train, encoder, collator, config, shuffle=True)
@@ -139,6 +141,8 @@ def run_training(config: RunConfig) -> dict[str, float]:
     if config.train.early_stop is not None:
         es = config.train.early_stop
         callbacks.append(EarlyStopping(monitor=es.monitor, mode=es.mode, patience=es.patience, min_delta=es.min_delta))
+    if config.wandb.enabled:
+        callbacks.append(WandbLogger(config, data.corpus, data.split, output_dir))
 
     trainer = Trainer(model, task, config.train, callbacks=callbacks, batch_adapter=adapter)
     metrics = trainer.fit(train_loader, val_loader)

@@ -1,8 +1,8 @@
-# Extending sboltorch
+# Extending sbol-torch
 
-sbol-torch is a small set of `Protocol`s with interchangeable implementations.
-Adding a capability means writing one implementation and registering it in the
-relevant `build_*` factory — the training engine and pipeline are untouched.
+sbol-torch is a set of `Protocol`s with interchangeable implementations. Adding a
+capability means writing one implementation and registering it in the relevant
+`build_*` factory; the training engine and pipeline stay untouched.
 
 ## Add a tokenizer
 
@@ -61,9 +61,12 @@ needs a different head/model, extend `build_model`.
 ## Add a callback
 
 Subclass `Callback` (`sboltorch.engine.callbacks`) and override
-`on_train_start` / `on_epoch_end` / `on_train_end`. The bundled callbacks are
-`EarlyStopping`, `ModelCheckpoint`, and `MetricLogger`; the pipeline assembles
-them from config.
+`on_train_start` / `on_step_end` / `on_epoch_end` / `on_train_end`. The bundled
+callbacks are `EarlyStopping`, `ModelCheckpoint`, `MetricLogger`, and
+`WandbLogger`; the pipeline assembles them from config. `on_train_end` is
+guaranteed to run (the trainer tears callbacks down in a `finally`), so it is the
+place to release resources. `on_step_end(trainer, step, logs)` fires after each
+optimizer step with `step_loss` and `lr`.
 
 ## Add a batch modality
 

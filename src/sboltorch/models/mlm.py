@@ -17,13 +17,13 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from transformers import AutoConfig, AutoModelForMaskedLM
+from transformers import AutoConfig, AutoModelForMaskedLM, PreTrainedModel
 
 from ..config import ModelConfig
 
 
 class MaskedLMModel(nn.Module):
-    def __init__(self, lm: nn.Module) -> None:
+    def __init__(self, lm: PreTrainedModel) -> None:
         super().__init__()
         self.lm = lm
 

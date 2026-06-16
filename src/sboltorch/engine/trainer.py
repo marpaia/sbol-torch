@@ -19,7 +19,23 @@ from torch.utils.data import DataLoader
 from ..config import TrainConfig
 from ..tasks.base import Task
 from .batch import BatchAdapter, TensorBatchAdapter
-from .callbacks import Callback
+
+
+class Callback:
+    """The hooks the training loop invokes. Concrete callbacks live in
+    ``sboltorch.engine.callbacks``."""
+
+    def on_train_start(self, trainer: Trainer) -> None:
+        return None
+
+    def on_step_end(self, trainer: Trainer, step: int, logs: dict[str, float]) -> None:
+        return None
+
+    def on_epoch_end(self, trainer: Trainer, epoch: int, metrics: dict[str, float]) -> None:
+        return None
+
+    def on_train_end(self, trainer: Trainer) -> None:
+        return None
 
 
 def select_device() -> torch.device:
@@ -60,6 +76,7 @@ class Trainer:
         self.device = device or select_device()
         self.adapter = batch_adapter or TensorBatchAdapter()
         self.should_stop = False
+        self.global_step = 0
         self.model.to(self.device)
 
     def _trainable_params(self) -> list[torch.nn.Parameter]:
@@ -79,19 +96,22 @@ class Trainer:
             cb.on_train_start(self)
 
         last_metrics: dict[str, float] = {}
-        for epoch in range(self.config.epochs):
-            train_loss = self._train_epoch(train_loader, optimizer, scheduler, scaler, use_amp)
-            metrics = {"train_loss": train_loss}
-            if val_loader is not None:
-                metrics.update(self._validate(val_loader))
-            last_metrics = metrics
+        try:
+            for epoch in range(self.config.epochs):
+                train_loss = self._train_epoch(train_loader, optimizer, scheduler, scaler, use_amp)
+                metrics = {"train_loss": train_loss}
+                if val_loader is not None:
+                    metrics.update(self._validate(val_loader))
+                last_metrics = metrics
+                for cb in self.callbacks:
+                    cb.on_epoch_end(self, epoch, metrics)
+                if self.should_stop:
+                    break
+        finally:
+            # Always run teardown — closes log handles and finishes the W&B run
+            # even if an epoch raises.
             for cb in self.callbacks:
-                cb.on_epoch_end(self, epoch, metrics)
-            if self.should_stop:
-                break
-
-        for cb in self.callbacks:
-            cb.on_train_end(self)
+                cb.on_train_end(self)
         return last_metrics
 
     def _train_epoch(
@@ -120,6 +140,13 @@ class Trainer:
                 scaler.update()
                 scheduler.step()
                 optimizer.zero_grad()
+                self.global_step += 1
+                logs: dict[str, float] = {
+                    "step_loss": float(loss.item() * self.config.grad_accum),
+                    "lr": float(scheduler.get_last_lr()[0]),
+                }
+                for cb in self.callbacks:
+                    cb.on_step_end(self, self.global_step, logs)
             total += loss.item() * self.config.grad_accum
             count += 1
         return total / max(1, count)

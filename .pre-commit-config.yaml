@@ -11,10 +11,15 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
+  # Run mypy in the project environment so it type-checks against the real
+  # dependencies (torch, transformers, wandb). An isolated env would treat them
+  # as Any and miss real type errors.
+  - repo: local
     hooks:
       - id: mypy
-        files: ^src/
-        additional_dependencies: [pydantic>=2.6, types-PyYAML]
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
         args: [--config-file=pyproject.toml]

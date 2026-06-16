@@ -1,7 +1,8 @@
 # Architecture
 
-sboltorch turns SBOL designs into trained transformer models. Its design rests on
-three ideas: one record type, swappable plug points, and a small explicit engine.
+sbol-torch turns SBOL designs into trained transformer models. Three ideas shape
+it: every source normalizes to one record type, the parts that vary plug in
+behind protocols, and the training engine stays small and explicit.
 
 ## One record type
 
@@ -16,7 +17,7 @@ Training code consumes only `SbolObject`s and never branches on provenance. A
 source is anything satisfying the `Corpus` protocol (`__iter__` yielding
 `SbolObject`s, plus a `fingerprint()` for caching).
 
-## Plug points, not forks
+## Swappable plug points
 
 Three independent axes are each a `Protocol` with interchangeable implementations,
 selected by configuration:
@@ -30,7 +31,7 @@ selected by configuration:
 Adding an implementation and registering it in the matching `build_*` factory
 extends a capability without touching the engine. See [extending.md](extending.md).
 
-## A small, explicit engine
+## The training engine
 
 The training loop (`sboltorch.engine`) is plain PyTorch: AMP, gradient
 accumulation and clipping, a linear warmup/decay schedule, and a list of
@@ -40,14 +41,11 @@ model (tensor-dict batches) or a graph model (PyG `Batch` objects).
 
 ## Data flow
 
-```
-config (Pydantic)
-      │
-      ▼
-Corpus ──▶ materialize ──▶ split ──▶ Encoder ──▶ DataLoader ──▶ Trainer ──▶ checkpoint
-(source)   (Parquet)      (seeded)  (modality)   (+collator)   (+Task,        + metrics
-                                    via Tokenizer              BatchAdapter)
-```
+A `RunConfig` drives the whole pipeline. The configured `Corpus` source is
+materialized to Parquet and split into train/val/test (seeded). The `Encoder`
+turns each `SbolObject` into model input for its modality, using the `Tokenizer`,
+and a `DataLoader` batches the result through a collator. The `Trainer` then runs
+the loop under the `Task` and `BatchAdapter`, writing a checkpoint and metrics.
 
 ## Layers
 
@@ -56,7 +54,7 @@ Corpus ──▶ materialize ──▶ split ──▶ Encoder ──▶ DataLoa
 | Config | `sboltorch.config` | One Pydantic `RunConfig` per run; validated, serialized. |
 | Data | `sboltorch.data` | Corpus sources (`SbolDbClient`, `LocalFileCorpus`, synthetic) and Parquet materialization. |
 | Tokenize | `sboltorch.tokenize` | `hf` / `kmer` / `char` behind one protocol. |
-| Encoders | `sboltorch.encoders` | `SbolObject` → model input, per modality. |
+| Encoders | `sboltorch.encoders` | Turn an `SbolObject` into model input, per modality. |
 | Datasets | `sboltorch.datasets` | Torch `Dataset`, padding collator, MLM collator, seeded splits. |
 | Models | `sboltorch.models` | Backbone (pretrained or from-scratch) + pooling + head; MLM and graph models. |
 | Tasks | `sboltorch.tasks` | Loss, metrics, label dtype, target transform. |
