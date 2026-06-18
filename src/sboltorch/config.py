@@ -13,7 +13,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from .exceptions import ConfigError
+from sboltorch.exceptions import ConfigError
 
 
 class CorpusConfig(BaseModel):

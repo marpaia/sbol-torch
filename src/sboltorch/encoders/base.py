@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from ..types import SbolObject
+from sboltorch.types import SbolObject
 
 
 @dataclass(frozen=True)

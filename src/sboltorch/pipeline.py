@@ -14,21 +14,21 @@ from typing import Any, Callable
 
 from torch.utils.data import DataLoader
 
-from .config import RunConfig
-from .data.corpus import build_corpus
-from .data.materialize import MaterializedCorpus, materialize
-from .datasets.dataset import Collator, EncodedDataset
-from .datasets.mlm_collator import MlmCollator
-from .datasets.splits import Split, make_split
-from .encoders.base import build_encoder
-from .engine.callbacks import Callback, EarlyStopping, MetricLogger, ModelCheckpoint, WandbLogger
-from .engine.trainer import Trainer
-from .models import build_model
-from .models.mlm import MaskedLMModel
-from .reproducibility import set_seed
-from .tasks.base import Task, build_task
-from .tokenize.base import build_tokenizer
-from .types import SbolObject
+from sboltorch.config import RunConfig
+from sboltorch.data.corpus import build_corpus
+from sboltorch.data.materialize import MaterializedCorpus, materialize
+from sboltorch.datasets.dataset import Collator, EncodedDataset
+from sboltorch.datasets.mlm_collator import MlmCollator
+from sboltorch.datasets.splits import Split, make_split
+from sboltorch.encoders.base import build_encoder
+from sboltorch.engine.callbacks import Callback, EarlyStopping, MetricLogger, ModelCheckpoint, WandbLogger
+from sboltorch.engine.trainer import Trainer
+from sboltorch.models import build_model
+from sboltorch.models.mlm import MaskedLMModel
+from sboltorch.reproducibility import set_seed
+from sboltorch.tasks.base import Task, build_task
+from sboltorch.tokenize.base import build_tokenizer
+from sboltorch.types import SbolObject
 
 
 @dataclass

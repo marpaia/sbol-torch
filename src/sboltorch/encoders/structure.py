@@ -10,9 +10,9 @@ embeddings are resized) sees the SBOL structure inline with the sequence.
 
 from __future__ import annotations
 
-from ..tokenize.base import Tokenizer
-from ..types import SbolObject, local_name
-from .base import EncoderSpec, ModelInput
+from sboltorch.encoders.base import EncoderSpec, ModelInput
+from sboltorch.tokenize.base import Tokenizer
+from sboltorch.types import SbolObject, local_name
 
 # Roles the synthetic generator emits; used as the default marker vocabulary.
 DEFAULT_ROLES = (

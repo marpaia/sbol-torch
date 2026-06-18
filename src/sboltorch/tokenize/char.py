@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import Encoded
+from sboltorch.tokenize.base import Encoded
 
 # Full IUPAC nucleotide alphabet so ambiguous bases get real, distinct tokens.
 _ALPHABET = "ACGTUNRYSWKMBDHV"

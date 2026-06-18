@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from .corpus import Corpus, build_corpus
-from .local import LocalFileCorpus
-from .materialize import MaterializedCorpus, materialize
-from .sbol_db import SbolDbClient
-from .synthetic import SyntheticCorpus, generate_components, write_sbol_turtle
+from sboltorch.data.corpus import Corpus, build_corpus
+from sboltorch.data.local import LocalFileCorpus
+from sboltorch.data.materialize import MaterializedCorpus, materialize
+from sboltorch.data.sbol_db import SbolDbClient
+from sboltorch.data.synthetic import SyntheticCorpus, generate_components, write_sbol_turtle
 
 __all__ = [
     "Corpus",

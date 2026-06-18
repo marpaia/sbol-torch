@@ -10,11 +10,11 @@ Installed as ``sbol-torch``; imported as ``sboltorch``, commonly::
 
 from __future__ import annotations
 
-from .config import RunConfig
-from .data.corpus import build_corpus
-from .data.materialize import materialize
-from .pipeline import prepare_data, run_training
-from .types import Alphabet, Feature, SbolObject, SbolSequence
+from sboltorch.config import RunConfig
+from sboltorch.data.corpus import build_corpus
+from sboltorch.data.materialize import materialize
+from sboltorch.pipeline import prepare_data, run_training
+from sboltorch.types import Alphabet, Feature, SbolObject, SbolSequence
 
 __version__ = "0.1.0"
 

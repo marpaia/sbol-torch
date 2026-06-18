@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoConfig, AutoModelForMaskedLM, PreTrainedModel
 
-from ..config import ModelConfig
+from sboltorch.config import ModelConfig
 
 
 class MaskedLMModel(nn.Module):

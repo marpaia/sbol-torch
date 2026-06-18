@@ -13,9 +13,9 @@ from typing import Any, Iterator
 
 import httpx
 
-from ..config import CorpusConfig
-from ..exceptions import SbolDbError
-from ..types import GraphEdge, GraphNode, GraphSlice, SbolObject, local_name
+from sboltorch.config import CorpusConfig
+from sboltorch.exceptions import SbolDbError
+from sboltorch.types import GraphEdge, GraphNode, GraphSlice, SbolObject, local_name
 
 # sbol-db caps a listing page at 5000 objects.
 _MAX_PAGE = 5000

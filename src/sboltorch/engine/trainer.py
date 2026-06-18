@@ -16,9 +16,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from ..config import TrainConfig
-from ..tasks.base import Task
-from .batch import BatchAdapter, TensorBatchAdapter
+from sboltorch.config import TrainConfig
+from sboltorch.engine.batch import BatchAdapter, TensorBatchAdapter
+from sboltorch.tasks.base import Task
 
 
 class Callback:

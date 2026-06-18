@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from itertools import product
 
-from .base import Encoded
+from sboltorch.tokenize.base import Encoded
 
 _BASES = "ACGT"
 # Reserved ids: 0 pad, 1 unk, 2 cls, 3 sep, 4 mask. Real k-mers follow.

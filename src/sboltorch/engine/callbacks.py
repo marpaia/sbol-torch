@@ -12,11 +12,10 @@ from pathlib import Path
 from typing import Any
 
 import wandb
-
-from ..config import RunConfig
-from ..data.materialize import MaterializedCorpus
-from ..datasets.splits import Split
-from .trainer import Callback, Trainer
+from sboltorch.config import RunConfig
+from sboltorch.data.materialize import MaterializedCorpus
+from sboltorch.datasets.splits import Split
+from sboltorch.engine.trainer import Callback, Trainer
 
 
 def _is_improvement(current: float, best: float, mode: str, min_delta: float) -> bool:

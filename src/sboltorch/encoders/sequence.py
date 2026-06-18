@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from ..exceptions import ParseError
-from ..tokenize.base import Tokenizer
-from ..types import SbolObject
-from .base import EncoderSpec, ModelInput
+from sboltorch.encoders.base import EncoderSpec, ModelInput
+from sboltorch.exceptions import ParseError
+from sboltorch.tokenize.base import Tokenizer
+from sboltorch.types import SbolObject
 
 
 class SequenceEncoder:

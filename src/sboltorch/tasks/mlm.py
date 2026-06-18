@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ..datasets.mlm_collator import IGNORE_INDEX
+from sboltorch.datasets.mlm_collator import IGNORE_INDEX
 
 
 class MlmTask:

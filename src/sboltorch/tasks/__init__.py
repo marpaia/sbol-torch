@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .base import Task, build_task
-from .supervised import SupervisedTask
+from sboltorch.tasks.base import Task, build_task
+from sboltorch.tasks.supervised import SupervisedTask
 
 __all__ = ["Task", "build_task", "SupervisedTask"]

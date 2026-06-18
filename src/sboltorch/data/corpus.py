@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Iterator, Protocol, runtime_checkable
 
-from ..config import CorpusConfig
-from ..types import SbolObject
+from sboltorch.config import CorpusConfig
+from sboltorch.types import SbolObject
 
 
 @runtime_checkable

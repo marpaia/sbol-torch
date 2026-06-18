@@ -18,7 +18,7 @@ import random
 from pathlib import Path
 from typing import Iterator
 
-from ..types import Alphabet, Feature, GraphEdge, GraphNode, GraphSlice, Location, SbolObject, SbolSequence
+from sboltorch.types import Alphabet, Feature, GraphEdge, GraphNode, GraphSlice, Location, SbolObject, SbolSequence
 
 SBOL3 = "http://sbols.org/v3#"
 NS = "https://sboltorch.test/"

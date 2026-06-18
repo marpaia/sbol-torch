@@ -14,8 +14,8 @@ from dataclasses import dataclass
 import torch
 from torch_geometric.data import Data
 
-from ..types import SbolObject, local_name
-from .structure import DEFAULT_ROLES
+from sboltorch.encoders.structure import DEFAULT_ROLES
+from sboltorch.types import SbolObject, local_name
 
 _NODE_CLASSES = ("Component", "SubComponent", "Sequence")
 _EDGE_PREDICATES = ("hasFeature", "instanceOf", "hasSequence")

@@ -5,8 +5,8 @@ from __future__ import annotations
 import torch.nn as nn
 from transformers import AutoConfig, AutoModel
 
-from ..config import ModelConfig
-from ..exceptions import ConfigError
+from sboltorch.config import ModelConfig
+from sboltorch.exceptions import ConfigError
 
 
 def load_backbone(model_name: str) -> tuple[nn.Module, int]:

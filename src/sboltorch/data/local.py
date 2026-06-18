@@ -13,9 +13,9 @@ from typing import Iterator
 from rdflib import Graph, URIRef
 from rdflib.term import Node
 
-from ..config import CorpusConfig
-from ..exceptions import ParseError
-from ..types import Alphabet, SbolObject, SbolSequence, local_name
+from sboltorch.config import CorpusConfig
+from sboltorch.exceptions import ParseError
+from sboltorch.types import Alphabet, SbolObject, SbolSequence, local_name
 
 _SBOL_ELEMENTS = "http://sbols.org/v2#elements"
 _SBOL_ELEMENTS_V3 = "http://sbols.org/v3#elements"

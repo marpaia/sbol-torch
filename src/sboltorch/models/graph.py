@@ -6,10 +6,10 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import TransformerConv, global_mean_pool
 
-from ..config import ModelConfig, TaskConfig
-from ..encoders.graph import GraphSpec
-from ..exceptions import ConfigError
-from .heads import ClassificationHead, RegressionHead
+from sboltorch.config import ModelConfig, TaskConfig
+from sboltorch.encoders.graph import GraphSpec
+from sboltorch.exceptions import ConfigError
+from sboltorch.models.heads import ClassificationHead, RegressionHead
 
 
 class GraphTransformerModel(nn.Module):

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from .base import Encoded, Tokenizer, build_tokenizer
-from .char import CharTokenizer
-from .hf import HFTokenizer
-from .kmer import KmerTokenizer
+from sboltorch.tokenize.base import Encoded, Tokenizer, build_tokenizer
+from sboltorch.tokenize.char import CharTokenizer
+from sboltorch.tokenize.hf import HFTokenizer
+from sboltorch.tokenize.kmer import KmerTokenizer
 
 __all__ = [
     "Encoded",

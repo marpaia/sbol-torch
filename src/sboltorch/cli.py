@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .config import RunConfig
-from .data.corpus import build_corpus
-from .data.materialize import materialize
-from .pipeline import run_training
+from sboltorch.config import RunConfig
+from sboltorch.data.corpus import build_corpus
+from sboltorch.data.materialize import materialize
+from sboltorch.pipeline import run_training
 
 
 def _cmd_ingest(args: argparse.Namespace) -> int:

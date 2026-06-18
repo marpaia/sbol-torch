@@ -17,7 +17,8 @@ from typing import Any, Iterator
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from ..types import (
+from sboltorch.data.corpus import Corpus
+from sboltorch.types import (
     Alphabet,
     SbolObject,
     SbolSequence,
@@ -26,7 +27,6 @@ from ..types import (
     graph_from_dict,
     graph_to_dict,
 )
-from .corpus import Corpus
 
 _SCHEMA = pa.schema(
     [

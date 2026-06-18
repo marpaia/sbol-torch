@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from .base import Encoder, EncoderSpec, ModelInput, build_encoder
-from .graph import GraphEncoder, GraphSpec
-from .sequence import SequenceEncoder
-from .structure import StructureAwareEncoder
+from sboltorch.encoders.base import Encoder, EncoderSpec, ModelInput, build_encoder
+from sboltorch.encoders.graph import GraphEncoder, GraphSpec
+from sboltorch.encoders.sequence import SequenceEncoder
+from sboltorch.encoders.structure import StructureAwareEncoder
 
 __all__ = [
     "Encoder",

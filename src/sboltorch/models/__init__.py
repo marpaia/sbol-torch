@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import torch.nn as nn
 
-from ..config import ModelConfig, TaskConfig
-from .backbone import build_from_scratch_encoder, load_backbone
-from .heads import ClassificationHead, RegressionHead
-from .mlm import MaskedLMModel, build_mlm_model
-from .sequence_model import SequenceModel
+from sboltorch.config import ModelConfig, TaskConfig
+from sboltorch.models.backbone import build_from_scratch_encoder, load_backbone
+from sboltorch.models.heads import ClassificationHead, RegressionHead
+from sboltorch.models.mlm import MaskedLMModel, build_mlm_model
+from sboltorch.models.sequence_model import SequenceModel
 
 __all__ = [
     "build_model",

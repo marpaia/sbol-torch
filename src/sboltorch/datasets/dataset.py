@@ -7,8 +7,8 @@ from typing import Any, Sequence
 import torch
 from torch.utils.data import Dataset
 
-from ..encoders.base import ModelInput, SupportsEncode
-from ..types import SbolObject
+from sboltorch.encoders.base import ModelInput, SupportsEncode
+from sboltorch.types import SbolObject
 
 
 class EncodedDataset(Dataset):

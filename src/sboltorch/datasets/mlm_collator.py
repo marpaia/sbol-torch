@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import torch
 
-from ..encoders.base import ModelInput
-from ..tokenize.base import Tokenizer
-from .dataset import pad_token_batch
+from sboltorch.datasets.dataset import pad_token_batch
+from sboltorch.encoders.base import ModelInput
+from sboltorch.tokenize.base import Tokenizer
 
 IGNORE_INDEX = -100
 

@@ -14,7 +14,7 @@ from typing import Any
 
 from transformers import AutoTokenizer
 
-from .base import Encoded
+from sboltorch.tokenize.base import Encoded
 
 
 class HFTokenizer:
