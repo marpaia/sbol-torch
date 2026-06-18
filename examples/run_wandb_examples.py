@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import sboltorch as st
 import wandb
+
+import sboltorch as st
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIGS = ["train_graph", "finetune_structure_aware"]

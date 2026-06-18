@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import wandb
+
 from sboltorch.config import RunConfig
 from sboltorch.data.materialize import MaterializedCorpus
 from sboltorch.datasets.splits import Split
