@@ -14,13 +14,16 @@ never means forking the pipeline.
 
 | Axis | Options |
 |------|---------|
-| **Data sources** | sbol-db REST API, local SBOL/FASTA files, or a synthetic generator |
-| **Tokenizers** | pretrained HuggingFace (`hf`), overlapping k-mer, or IUPAC character |
+| **Data sources** | sbol-db REST API, local SBOL/FASTA files, or a synthetic generator; loaded in-memory or **streamed** from sharded Parquet for corpora larger than RAM |
+| **Tokenizers** | pretrained HuggingFace (`hf`), overlapping k-mer, or IUPAC character (encode + decode) |
 | **Modalities** | `sequence`, `structure_aware` (feature boundaries), `graph` (PyG composition transformer) |
-| **Objectives** | `supervised` fine-tuning, `frozen`-backbone head, `mlm` pretraining (from-scratch and continued) |
-| **Engine** | raw-PyTorch loop, early stopping, checkpointing, AMP, LR schedule, gradient accumulation |
+| **Objectives** | `supervised` / `frozen` heads, `mlm` and `causal` pretraining (from-scratch or continued) |
+| **Architectures** | from-scratch or pretrained; absolute or **RoPE** positions (`gpt_neox`/`llama`/`modernbert`), SDPA/FlashAttention, configurable context length |
+| **Generation** | autoregressive sampling (temperature / top-k / top-p) and design completion from a causal backbone (`sboltorch generate`) |
+| **Engine** | raw-PyTorch loop, epoch- or **step-budgeted**; AMP (`fp16`/`bf16`), gradient accumulation/clipping, gradient checkpointing, `torch.compile`; **resumable** checkpoints; early stopping; LR schedule |
+| **Scaling** | token **packing**, multi-GPU **DDP** (data-parallel) via `torchrun` |
 | **Tracking** | per-epoch `metrics.jsonl`, optional [Weights & Biases](https://docs.wandb.ai/) (scalars, config, lineage, model artifact) |
-| **Reproducibility** | one validated config per run, seeded splits, content-fingerprinted Parquet cache |
+| **Reproducibility** | one validated config per run, seeded / hash splits, content-fingerprinted sharded Parquet cache, resumable runs |
 
 ## Install
 
@@ -45,6 +48,19 @@ sboltorch ingest examples/configs/finetune_expression.yaml
 
 # Train. Resolved config, per-epoch metrics.jsonl, and best.pt land in output_dir.
 sboltorch train examples/configs/finetune_expression.yaml
+
+# Resume an interrupted run from its rolling checkpoint (needs checkpoint_every_n_steps).
+sboltorch train examples/configs/pretrain_mlm.yaml --resume runs/pretrain_mlm/last.pt
+
+# Generate from a trained causal backbone — point model.backbone at the run's
+# backbone/ (with from_scratch: false), then complete a design from a prompt.
+sboltorch generate my_causal_run.yaml --prompt ATGCGT --max-new-tokens 200 --temperature 0.8
+```
+
+Train multi-GPU with `torchrun` and `train.distributed.strategy: ddp`:
+
+```bash
+torchrun --nproc_per_node=<gpus> -m sboltorch.cli train examples/configs/pretrain_causal_long.yaml
 ```
 
 Or from Python:
@@ -64,6 +80,7 @@ metrics = st.run_training(config)
 | [`pretrain_mlm.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/pretrain_mlm.yaml) | From-scratch masked-LM pretraining; writes a reusable backbone. |
 | [`finetune_structure_aware.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/finetune_structure_aware.yaml) | Sequence + feature-boundary markers. |
 | [`train_graph.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/train_graph.yaml) | Graph transformer over the composition graph. |
+| [`pretrain_causal_long.yaml`](https://github.com/marpaia/sbol-torch/blob/master/examples/configs/pretrain_causal_long.yaml) | Long-context causal pretraining: RoPE decoder, SDPA, streamed + packed corpus. |
 
 ## Experiment tracking
 
@@ -94,6 +111,8 @@ checkpoint as a model artifact.
 | [data.md](https://github.com/marpaia/sbol-torch/blob/master/docs/data.md) | Data sources, the sbol-db client, materialization, fixtures. |
 | [backbones.md](https://github.com/marpaia/sbol-torch/blob/master/docs/backbones.md) | Choosing/loading backbones and environment constraints. |
 | [extending.md](https://github.com/marpaia/sbol-torch/blob/master/docs/extending.md) | Adding a tokenizer, encoder, task, callback, or data source. |
+
+Release history is in [CHANGELOG.md](https://github.com/marpaia/sbol-torch/blob/master/CHANGELOG.md).
 
 ## Develop
 

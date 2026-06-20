@@ -39,12 +39,14 @@ All three produce batches consumed by one training engine through a
 - **Classification** requires `task.num_classes`.
 - **MLM** masks ~`mlm_probability` of content tokens (80% `<mask>`, 10% random,
   10% unchanged), never masking special tokens.
-- **Causal** trains a decoder (e.g. `model.arch.model_type: gpt2`) on next-token
-  prediction. Pair it with `packing` to train on fixed-length blocks. After
-  training, the saved `backbone/` generates: `sboltorch generate <config>
-  --prompt <seq>` completes a design from a prefix (greedy with `--temperature 0`,
-  or sampled with `--temperature`/`--top-k`/`--top-p`). The same is available in
-  Python as `st.generate_sequence(model, tokenizer, prompt, max_new_tokens=...)`.
+- **Causal** trains a decoder (e.g. `model.arch.model_type: gpt2`, or a RoPE type
+  like `gpt_neox` for long context) on next-token prediction. Pair it with
+  `packing` to train on fixed-length blocks. The run writes its model to
+  `<output_dir>/backbone/`; to generate, point `model.backbone` at that directory
+  with `from_scratch: false` and run `sboltorch generate <config> --prompt <seq>`,
+  which completes a design from a prefix (greedy with `--temperature 0`, or sampled
+  with `--temperature`/`--top-k`/`--top-p`). The same is available in Python as
+  `st.generate_sequence(model, tokenizer, prompt, max_new_tokens=...)`.
 
 ## Pretrain, then fine-tune
 
@@ -77,9 +79,13 @@ objectives mix freely.
 - Classification: accuracy (`val_accuracy`).
 - MLM: masked cross-entropy as `val_loss` (perplexity is `exp(val_loss)`) and
   `val_masked_accuracy`.
+- Causal: next-token cross-entropy as `val_loss` (perplexity is `exp(val_loss)`)
+  and `val_next_token_accuracy`.
 
-Per-epoch metrics are printed and appended to `<output_dir>/metrics.jsonl`; the
-best checkpoint (by the task's primary metric) is saved to `best.pt`.
+Metrics are printed and appended to `<output_dir>/metrics.jsonl` (per epoch, or
+per `eval_every_n_steps` for step-budgeted runs), each row tagged with the global
+step; the best checkpoint (by the task's primary metric) is saved to `best.pt`,
+and a rolling resumable `last.pt` if `checkpoint_every_n_steps` is set.
 
 ## What the test suite verifies
 
@@ -94,4 +100,11 @@ that the loss drops and the model generalizes, not just that the code runs:
 | Graph transformer | val_loss falls, `val_r2 > 0.5` |
 
 Continued pretraining and pretrained-backbone loading are exercised against a
-real hub model in the data/model tests.
+real hub model in the data/model tests. The features added on top of these are
+held to the same "prove it works, not just runs" bar in their own suites:
+resumable training reproduces an uninterrupted run (`test_resume.py`); a streaming
++ packed MLM run learns (`test_streaming.py`); a causal LM learns next-token
+prediction and a model trained on a motif regenerates it (`test_causal.py`); a
+RoPE decoder learns and runs past an absolute model's context limit
+(`test_long_context.py`); and 2-rank DDP matches single-process training
+bit-for-bit (`test_distributed.py`).

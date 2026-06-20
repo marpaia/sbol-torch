@@ -56,17 +56,21 @@ class MyTask:
 ```
 
 Register it in `build_task` and add a `kind` to `TaskConfig`. If the objective
-needs a different head/model, extend `build_model`.
+needs a different head/model, extend `build_model` (as `mlm` and `causal` do, each
+wrapping a different HuggingFace `AutoModelFor…`). A new objective may also need a
+matching collator — `supervised` pads, `mlm` masks, `causal` shifts targets.
 
 ## Add a callback
 
 Subclass `Callback` (`sboltorch.engine.callbacks`) and override
 `on_train_start` / `on_step_end` / `on_epoch_end` / `on_train_end`. The bundled
-callbacks are `EarlyStopping`, `ModelCheckpoint`, `MetricLogger`, and
-`WandbLogger`; the pipeline assembles them from config. `on_train_end` is
-guaranteed to run (the trainer tears callbacks down in a `finally`), so it is the
-place to release resources. `on_step_end(trainer, step, logs)` fires after each
-optimizer step with `step_loss` and `lr`.
+callbacks are `EarlyStopping`, `ModelCheckpoint`, `PeriodicCheckpoint`,
+`MetricLogger`, and `WandbLogger`; the pipeline assembles them from config.
+`on_train_end` is guaranteed to run (the trainer tears callbacks down in a
+`finally`), so it is the place to release resources. `on_step_end(trainer, step,
+logs)` fires after each optimizer step with `step_loss` and `lr`. Callbacks that
+write should gate on rank (the bundled ones take `is_main`) so a distributed run
+writes once.
 
 ## Add a batch modality
 

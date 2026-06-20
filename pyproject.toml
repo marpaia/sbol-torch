@@ -2,7 +2,7 @@
 # Distribution name on PyPI is hyphenated (`pip install sbol-torch`); the import
 # package is `sboltorch` (commonly `import sboltorch as st`).
 name = "sbol-torch"
-version = "0.1.0"
+version = "0.1.1"
 description = "A PyTorch library for synthetic biology and biodesign automation"
 readme = "README.md"
 requires-python = ">=3.11"
