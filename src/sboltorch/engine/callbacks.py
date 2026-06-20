@@ -69,6 +69,26 @@ class ModelCheckpoint(Callback):
         trainer.save_checkpoint(self.best_path, epoch=epoch, metrics=metrics)
 
 
+class PeriodicCheckpoint(Callback):
+    """Writes a full, resumable training checkpoint every ``every_n_steps`` steps.
+
+    Where ModelCheckpoint keeps the *best* model by a metric, this keeps a rolling
+    ``last.pt`` carrying optimizer/scheduler/scaler/RNG state, so a long run can
+    resume after an interruption. Resume continues from the next epoch boundary.
+    """
+
+    def __init__(self, output_dir: str | Path, every_n_steps: int, filename: str = "last.pt") -> None:
+        self.output_dir = Path(output_dir)
+        self.every_n_steps = every_n_steps
+        self.filename = filename
+
+    def on_step_end(self, trainer: Trainer, step: int, logs: dict[str, float]) -> None:
+        if self.every_n_steps <= 0 or step % self.every_n_steps != 0:
+            return
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        trainer.save_checkpoint(self.output_dir / self.filename, epoch=trainer.current_epoch, metrics={})
+
+
 class MetricLogger(Callback):
     """Prints per-epoch metrics and appends them to ``metrics.jsonl``."""
 
@@ -81,7 +101,7 @@ class MetricLogger(Callback):
         self._handle = (self.output_dir / "metrics.jsonl").open("a")
 
     def on_epoch_end(self, trainer: Trainer, epoch: int, metrics: dict[str, float]) -> None:
-        record = {"epoch": epoch, **metrics}
+        record = {"epoch": epoch, "step": trainer.global_step, **metrics}
         line = " ".join(f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" for k, v in record.items())
         print(line)
         if self._handle is not None:

@@ -5,12 +5,19 @@ It is deliberately small and boring: AMP, gradient accumulation, gradient
 clipping, a linear warmup/decay schedule, and a list of callbacks for early
 stopping / checkpointing / logging. Everything model- or task-specific lives
 behind the Task and model abstractions.
+
+The loop is step-budgeted: with ``train.max_steps`` set, optimizer steps (not
+epochs) end the run and evaluation/checkpointing follow a step cadence — the mode
+used for pretraining over a corpus too large to think about in epochs. Checkpoints
+carry full optimizer/scheduler/scaler/RNG state, so a run resumes from the next
+epoch boundary after an interruption.
 """
 
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
-from typing import Sequence
+from typing import Iterable, Sequence
 
 import numpy as np
 import torch
@@ -18,6 +25,7 @@ from torch.utils.data import DataLoader
 
 from sboltorch.config import TrainConfig
 from sboltorch.engine.batch import BatchAdapter, TensorBatchAdapter
+from sboltorch.reproducibility import rng_state, set_rng_state
 from sboltorch.tasks.base import Task
 
 
@@ -46,6 +54,19 @@ def select_device() -> torch.device:
     return torch.device("cpu")
 
 
+def resolve_precision(amp: bool, precision: str, device_type: str) -> tuple[bool, torch.dtype, bool]:
+    """Resolve ``(autocast_enabled, autocast_dtype, scaler_enabled)`` for a run.
+
+    Autocast and the fp16 gradient scaler engage only on CUDA; on CPU/MPS a run is
+    full fp32 regardless of ``precision``. bf16 autocasts without a loss scaler.
+    """
+    if not amp or device_type != "cuda" or precision == "fp32":
+        return False, torch.float32, False
+    if precision == "bf16":
+        return True, torch.bfloat16, False
+    return True, torch.float16, True  # fp16: autocast + loss scaler
+
+
 def _linear_schedule(
     optimizer: torch.optim.Optimizer, warmup_steps: int, total_steps: int
 ) -> torch.optim.lr_scheduler.LambdaLR:
@@ -56,6 +77,20 @@ def _linear_schedule(
         return max(0.0, remaining / max(1, total_steps - warmup_steps))
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+
+def _enable_gradient_checkpointing(model: torch.nn.Module) -> None:
+    """Turn on HuggingFace gradient checkpointing wherever the transformer lives.
+
+    The transformer is the model itself, an MLM model's ``lm``, or a sequence
+    model's ``backbone``; a model without the hook (e.g. the graph model) is a
+    no-op.
+    """
+    for module in (model, getattr(model, "lm", None), getattr(model, "backbone", None)):
+        enable = getattr(module, "gradient_checkpointing_enable", None)
+        if callable(enable):
+            enable()
+            return
 
 
 class Trainer:
@@ -69,7 +104,6 @@ class Trainer:
         device: torch.device | None = None,
         batch_adapter: BatchAdapter | None = None,
     ) -> None:
-        self.model = model
         self.task = task
         self.config = config
         self.callbacks = list(callbacks or [])
@@ -77,34 +111,73 @@ class Trainer:
         self.adapter = batch_adapter or TensorBatchAdapter()
         self.should_stop = False
         self.global_step = 0
-        self.model.to(self.device)
+        self.start_epoch = 0
+        self.current_epoch = 0
+
+        if config.gradient_checkpointing:
+            _enable_gradient_checkpointing(model)
+        model.to(self.device)
+        # ``_base_model`` owns the parameters and state dict; ``model`` is what we
+        # call forward through (a torch.compile wrapper shares the same params).
+        self._base_model = model
+        # torch.compile returns an nn.Module at runtime but is typed as Callable.
+        self.model: torch.nn.Module = torch.compile(model) if config.compile else model  # type: ignore[assignment]
+
+        self.autocast_enabled, self.autocast_dtype, self.scaler_enabled = resolve_precision(
+            config.amp, config.precision, self.device.type
+        )
+
+        # Training-state handles populated in fit() and serialized by checkpoints.
+        self.optimizer: torch.optim.Optimizer | None = None
+        self.scheduler: torch.optim.lr_scheduler.LambdaLR | None = None
+        self.scaler: torch.amp.GradScaler | None = None
+        self._val_loader: DataLoader | None = None
+        self._last_eval_metrics: dict[str, float] = {}
 
     def _trainable_params(self) -> list[torch.nn.Parameter]:
-        return [p for p in self.model.parameters() if p.requires_grad]
+        return [p for p in self._base_model.parameters() if p.requires_grad]
 
-    def fit(self, train_loader: DataLoader, val_loader: DataLoader | None = None) -> dict[str, float]:
-        optimizer = torch.optim.AdamW(
+    def fit(
+        self,
+        train_loader: DataLoader,
+        val_loader: DataLoader | None = None,
+        *,
+        resume_from: str | Path | None = None,
+    ) -> dict[str, float]:
+        self._val_loader = val_loader
+        self.optimizer = torch.optim.AdamW(
             self._trainable_params(), lr=self.config.lr, weight_decay=self.config.weight_decay
         )
         steps_per_epoch = max(1, len(train_loader) // self.config.grad_accum)
-        total_steps = steps_per_epoch * self.config.epochs
-        scheduler = _linear_schedule(optimizer, warmup_steps=int(0.1 * total_steps), total_steps=total_steps)
-        use_amp = self.config.amp and self.device.type == "cuda"
-        scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+        total_steps = self.config.max_steps or steps_per_epoch * self.config.epochs
+        self.scheduler = _linear_schedule(self.optimizer, warmup_steps=int(0.1 * total_steps), total_steps=total_steps)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.scaler_enabled)
+
+        if resume_from is not None:
+            self._load_state(resume_from)
 
         for cb in self.callbacks:
             cb.on_train_start(self)
 
+        step_based_eval = self.config.eval_every_n_steps is not None
         last_metrics: dict[str, float] = {}
+        # With a step budget, run epochs until max_steps is hit; otherwise the
+        # epoch count bounds the run (resuming past any already-completed epochs).
+        epochs: Iterable[int] = (
+            itertools.count(self.start_epoch) if self.config.max_steps else range(self.start_epoch, self.config.epochs)
+        )
         try:
-            for epoch in range(self.config.epochs):
-                train_loss = self._train_epoch(train_loader, optimizer, scheduler, scaler, use_amp)
-                metrics = {"train_loss": train_loss}
-                if val_loader is not None:
-                    metrics.update(self._validate(val_loader))
-                last_metrics = metrics
-                for cb in self.callbacks:
-                    cb.on_epoch_end(self, epoch, metrics)
+            for epoch in epochs:
+                self.current_epoch = epoch
+                train_loss = self._train_epoch(train_loader, epoch)
+                if step_based_eval:
+                    last_metrics = self._last_eval_metrics or last_metrics
+                else:
+                    metrics = {"train_loss": train_loss}
+                    if val_loader is not None:
+                        metrics.update(self._validate(val_loader))
+                    last_metrics = metrics
+                    self._dispatch_epoch_end(epoch, metrics)
                 if self.should_stop:
                     break
         finally:
@@ -114,42 +187,53 @@ class Trainer:
                 cb.on_train_end(self)
         return last_metrics
 
-    def _train_epoch(
-        self,
-        loader: DataLoader,
-        optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.LambdaLR,
-        scaler: torch.amp.GradScaler,
-        use_amp: bool,
-    ) -> float:
+    def _train_epoch(self, loader: DataLoader, epoch: int) -> float:
+        assert self.optimizer is not None and self.scheduler is not None and self.scaler is not None
         self.model.train()
-        optimizer.zero_grad()
+        self.optimizer.zero_grad()
         total = 0.0
         count = 0
+        eval_every = self.config.eval_every_n_steps
         for step, batch in enumerate(loader):
             batch = self.adapter.to_device(batch, self.device)
             labels = self.adapter.labels(batch)
-            with torch.autocast(device_type=self.device.type, enabled=use_amp):
+            with torch.autocast(
+                device_type=self.device.type,
+                dtype=self.autocast_dtype if self.autocast_enabled else None,
+                enabled=self.autocast_enabled,
+            ):
                 logits = self.adapter.forward(self.model, batch)
                 loss = self.task.loss(logits, labels) / self.config.grad_accum
-            scaler.scale(loss).backward()
+            self.scaler.scale(loss).backward()
             if (step + 1) % self.config.grad_accum == 0:
-                scaler.unscale_(optimizer)
+                self.scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self._trainable_params(), self.config.max_grad_norm)
-                scaler.step(optimizer)
-                scaler.update()
-                scheduler.step()
-                optimizer.zero_grad()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                self.scheduler.step()
+                self.optimizer.zero_grad()
                 self.global_step += 1
                 logs: dict[str, float] = {
                     "step_loss": float(loss.item() * self.config.grad_accum),
-                    "lr": float(scheduler.get_last_lr()[0]),
+                    "lr": float(self.scheduler.get_last_lr()[0]),
                 }
                 for cb in self.callbacks:
                     cb.on_step_end(self, self.global_step, logs)
+                if eval_every and self.global_step % eval_every == 0 and self._val_loader is not None:
+                    self._last_eval_metrics = self._validate(self._val_loader)
+                    self._dispatch_epoch_end(epoch, self._last_eval_metrics)
+                    self.model.train()
+                if self.config.max_steps and self.global_step >= self.config.max_steps:
+                    self.should_stop = True
             total += loss.item() * self.config.grad_accum
             count += 1
+            if self.should_stop:
+                break
         return total / max(1, count)
+
+    def _dispatch_epoch_end(self, epoch: int, metrics: dict[str, float]) -> None:
+        for cb in self.callbacks:
+            cb.on_epoch_end(self, epoch, metrics)
 
     @torch.no_grad()
     def _validate(self, loader: DataLoader) -> dict[str, float]:
@@ -171,9 +255,40 @@ class Trainer:
             metrics.update(self.task.epoch_metrics(np.concatenate(preds), np.concatenate(labels_all)))
         return {f"val_{k}" if not k.startswith("val_") else k: v for k, v in metrics.items()}
 
+    def state_dict(self) -> dict[str, object]:
+        """The full training state needed to resume: weights, optimizer, schedule,
+        scaler, step counter, and RNG."""
+        return {
+            "model_state": self._base_model.state_dict(),
+            "optimizer_state": self.optimizer.state_dict() if self.optimizer is not None else None,
+            "scheduler_state": self.scheduler.state_dict() if self.scheduler is not None else None,
+            "scaler_state": self.scaler.state_dict() if self.scaler is not None else None,
+            "global_step": self.global_step,
+            "rng": rng_state(),
+        }
+
     def save_checkpoint(self, path: str | Path, *, epoch: int, metrics: dict[str, float]) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {"model_state": self.model.state_dict(), "epoch": epoch, "metrics": metrics},
-            path,
-        )
+        payload = self.state_dict()
+        payload["epoch"] = epoch
+        payload["metrics"] = metrics
+        torch.save(payload, path)
+
+    def _load_state(self, path: str | Path) -> None:
+        """Restore training state saved by :meth:`save_checkpoint`.
+
+        The run continues at the epoch after the checkpointed one; ``global_step``
+        and the LR schedule carry over so the step budget stays correct.
+        """
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        self._base_model.load_state_dict(ckpt["model_state"])
+        if self.optimizer is not None and ckpt.get("optimizer_state") is not None:
+            self.optimizer.load_state_dict(ckpt["optimizer_state"])
+        if self.scheduler is not None and ckpt.get("scheduler_state") is not None:
+            self.scheduler.load_state_dict(ckpt["scheduler_state"])
+        if self.scaler is not None and ckpt.get("scaler_state"):
+            self.scaler.load_state_dict(ckpt["scaler_state"])
+        self.global_step = int(ckpt.get("global_step", 0))
+        self.start_epoch = int(ckpt.get("epoch", -1)) + 1
+        if ckpt.get("rng"):
+            set_rng_state(ckpt["rng"])

@@ -114,8 +114,19 @@ Splitting is a pure function of `(n, ratios, seed, strategy)` — reproducible a
 | `grad_accum` | int | `1` | Gradient accumulation steps. |
 | `max_grad_norm` | float | `1.0` | Gradient clipping. |
 | `amp` | bool | `true` | Mixed precision (active on CUDA). |
+| `precision` | `fp16` \| `bf16` \| `fp32` | `fp16` | Autocast dtype when `amp` is on and the device is CUDA. `bf16` needs no loss scaler and is the stable choice at scale; `fp32` disables autocast even with `amp` on. |
 | `num_workers` | int | `0` | DataLoader workers. |
+| `max_steps` | int | `null` | Step budget. When set, optimizer steps (not `epochs`) end the run, and evaluation/checkpointing can follow a step cadence — the mode for pretraining over a large corpus. |
+| `eval_every_n_steps` | int | `null` | Validate every N optimizer steps instead of at epoch boundaries. |
+| `checkpoint_every_n_steps` | int | `null` | Write a rolling, resumable `last.pt` every N steps. |
+| `gradient_checkpointing` | bool | `false` | Trade compute for memory in the transformer (HuggingFace backbones/LMs). |
+| `compile` | bool | `false` | Wrap the model in `torch.compile`. |
 | `early_stop` | object | `null` | Omit to disable. |
+
+Checkpoints (`best.pt`, `last.pt`) carry full optimizer/scheduler/scaler/RNG
+state. Resume a run with `sboltorch train <config> --resume <output_dir>/last.pt`;
+it continues from the next epoch boundary after the checkpointed one, with the
+step counter and LR schedule intact.
 
 ### `train.early_stop`
 

@@ -155,7 +155,19 @@ class TrainConfig(BaseModel):
     grad_accum: int = 1
     max_grad_norm: float = 1.0
     amp: bool = True
+    # Autocast precision when ``amp`` is on and the device is CUDA. ``bf16`` needs
+    # no loss scaler and is the stable choice for large models; ``fp32`` disables
+    # autocast even when ``amp`` is on.
+    precision: Literal["fp16", "bf16", "fp32"] = "fp16"
     num_workers: int = 0
+    # Step-budgeted training. When ``max_steps`` is set it, not ``epochs``, ends
+    # the run, and evaluation/checkpointing can run on a step cadence rather than
+    # at epoch boundaries — the right mode for pretraining over a large corpus.
+    max_steps: int | None = None
+    eval_every_n_steps: int | None = None
+    checkpoint_every_n_steps: int | None = None
+    gradient_checkpointing: bool = False
+    compile: bool = False
     early_stop: EarlyStopConfig | None = None
 
 

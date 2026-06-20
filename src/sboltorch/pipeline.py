@@ -21,7 +21,14 @@ from sboltorch.datasets.dataset import Collator, EncodedDataset
 from sboltorch.datasets.mlm_collator import MlmCollator
 from sboltorch.datasets.splits import Split, make_split
 from sboltorch.encoders.base import build_encoder
-from sboltorch.engine.callbacks import Callback, EarlyStopping, MetricLogger, ModelCheckpoint, WandbLogger
+from sboltorch.engine.callbacks import (
+    Callback,
+    EarlyStopping,
+    MetricLogger,
+    ModelCheckpoint,
+    PeriodicCheckpoint,
+    WandbLogger,
+)
 from sboltorch.engine.trainer import Trainer
 from sboltorch.models import build_model
 from sboltorch.models.mlm import MaskedLMModel
@@ -117,7 +124,7 @@ def _build_graph_run(config: RunConfig, data: PreparedData) -> tuple:
     return model, loader(data.split.train, shuffle=True), loader(data.split.val, shuffle=False), GraphBatchAdapter()
 
 
-def run_training(config: RunConfig) -> dict[str, float]:
+def run_training(config: RunConfig, *, resume_from: str | Path | None = None) -> dict[str, float]:
     """Run the full training pipeline and return the final epoch's metrics."""
     set_seed(config.seed)
     output_dir = Path(config.output_dir)
@@ -138,6 +145,8 @@ def run_training(config: RunConfig) -> dict[str, float]:
         MetricLogger(output_dir),
         ModelCheckpoint(output_dir, monitor=monitored, mode=mode),
     ]
+    if config.train.checkpoint_every_n_steps:
+        callbacks.append(PeriodicCheckpoint(output_dir, config.train.checkpoint_every_n_steps))
     if config.train.early_stop is not None:
         es = config.train.early_stop
         callbacks.append(EarlyStopping(monitor=es.monitor, mode=es.mode, patience=es.patience, min_delta=es.min_delta))
@@ -145,7 +154,7 @@ def run_training(config: RunConfig) -> dict[str, float]:
         callbacks.append(WandbLogger(config, data.corpus, data.split, output_dir))
 
     trainer = Trainer(model, task, config.train, callbacks=callbacks, batch_adapter=adapter)
-    metrics = trainer.fit(train_loader, val_loader)
+    metrics = trainer.fit(train_loader, val_loader, resume_from=resume_from)
     (output_dir / "final_metrics.json").write_text(json.dumps(metrics, indent=2))
 
     # Write the pretrained model in HF format so a later supervised run can set
