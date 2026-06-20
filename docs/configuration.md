@@ -16,11 +16,13 @@ config = RunConfig.from_yaml("examples/configs/train_graph.yaml")
 |-------|------|---------|-------|
 | `seed` | int | `42` | Seeds Python, NumPy, and torch; also seeds the split. |
 | `output_dir` | str | `runs/default` | Resolved config, `metrics.jsonl`, `best.pt`, `final_metrics.json` (and `backbone/` for MLM) are written here. |
+| `streaming` | bool | `false` | Stream the corpus from sharded Parquet instead of loading it into RAM. Requires `splits.strategy: hash` and `train.max_steps`. Sequence/MLM modalities only (not graph). |
 | `corpus` | object | — | **Required.** Where training data comes from. |
 | `tokenizer` | object | defaults | Sequence tokenization (ignored by the graph encoder). |
 | `encoder` | object | defaults | Input modality. |
 | `model` | object | defaults | Backbone + architecture. |
 | `task` | object | defaults | Training objective. |
+| `packing` | object | defaults | Token packing for LM pretraining (off by default). |
 | `splits` | object | defaults | Train/val/test partitioning. |
 | `train` | object | defaults | Optimization loop. |
 | `wandb` | object | defaults | Weights & Biases tracking (disabled by default). |
@@ -41,6 +43,7 @@ config = RunConfig.from_yaml("examples/configs/train_graph.yaml")
 | `synthetic_seed` | int | `0` | Seed for the synthetic generator. |
 | `label_key` | str | `null` | Where the supervised label comes from: an sbol-db predicate local-name, or a FASTA header `key=value`. `null` means unlabeled (pretraining). For the synthetic source, any non-null value enables labels. |
 | `cache_dir` | str | `.sboltorch_cache` | Where the materialized Parquet corpus is stored. |
+| `shard_size` | int | `50000` | Rows per Parquet shard. Sharding keeps materializing and streaming memory-bounded for a corpus larger than RAM. |
 
 See [data.md](data.md) for the corpus sources in depth.
 
@@ -94,14 +97,23 @@ See [data.md](data.md) for the corpus sources in depth.
 
 See [capabilities.md](capabilities.md) for how modality and objective combine.
 
+## `packing`
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `enabled` | bool | `false` | Concatenate tokenized documents into fixed-length blocks with no padding, so every position carries signal. The training unit becomes a block, not a document. Currently for `task.kind: mlm` and used with `streaming`. |
+| `block_size` | int | `512` | Tokens per packed block. Must be ≤ `model.arch.max_position_embeddings`. |
+
 ## `splits`
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `strategy` | `random` \| `stratified` | `random` | `stratified` balances label bins across partitions (requires labels). |
+| `strategy` | `random` \| `stratified` \| `hash` | `random` | `stratified` balances label bins across partitions (requires labels); `hash` assigns each record by hashing its IRI — stable as the corpus grows and required for `streaming`. |
 | `ratios` | [float, float, float] | `[0.8, 0.1, 0.1]` | train/val/test; must sum to 1.0. |
 
-Splitting is a pure function of `(n, ratios, seed, strategy)` — reproducible across runs.
+The `random`/`stratified` index splits are pure functions of `(n, ratios, seed,
+strategy)`; the `hash` split is a pure function of `(iri, ratios, seed)` per
+record — both reproducible across runs.
 
 ## `train`
 

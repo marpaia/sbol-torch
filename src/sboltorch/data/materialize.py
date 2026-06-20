@@ -1,21 +1,26 @@
-"""Materialize a corpus to a versioned Parquet cache.
+"""Materialize a corpus to a versioned, sharded Parquet cache.
 
 A long training run should not depend on a live database, and two runs over the
 "same data" must be byte-for-byte comparable. Materialization streams a corpus
-once into Parquet, hashing the contents into a fingerprint. Re-materializing the
-same data is a no-op that returns the cached shard.
+once into fixed-size Parquet shards, hashing the contents into a fingerprint.
+Re-materializing the same data is a no-op that returns the cached shards. Both
+writing and reading go a shard at a time, so the cache works for a corpus larger
+than memory.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+DEFAULT_SHARD_SIZE = 50_000
 
 from sboltorch.data.corpus import Corpus
 from sboltorch.types import (
@@ -49,30 +54,58 @@ _SCHEMA = pa.schema(
 
 @dataclass(frozen=True)
 class MaterializedCorpus:
-    """A Parquet-backed corpus: random-access, reproducible, offline."""
+    """A sharded-Parquet-backed corpus: streamable, reproducible, offline."""
 
     path: Path
     fingerprint: str
     count: int
+    shards: tuple[str, ...] = field(default_factory=tuple)
 
     def __len__(self) -> int:
         return self.count
 
+    def shard_paths(self) -> list[Path]:
+        if self.shards:
+            return [self.path / name for name in self.shards]
+        # A single legacy ``data.parquet`` written before sharding.
+        legacy = self.path / "data.parquet"
+        return [legacy] if legacy.exists() else []
+
     def labels(self) -> list[float | int | None]:
-        table = pq.read_table(self.path / "data.parquet", columns=["label"])
-        return [None if v is None else v for v in table.column("label").to_pylist()]
+        out: list[float | int | None] = []
+        for shard in self.shard_paths():
+            table = pq.read_table(shard, columns=["label"])
+            out.extend(table.column("label").to_pylist())
+        return out
+
+    def _iter_rows(self, shards: list[Path]) -> Iterator[SbolObject]:
+        for shard in shards:
+            for batch in pq.ParquetFile(shard).iter_batches():
+                for row in batch.to_pylist():
+                    yield _row_to_object(row)
 
     def __iter__(self) -> Iterator[SbolObject]:
-        table = pq.read_table(self.path / "data.parquet")
-        for row in table.to_pylist():
-            yield _row_to_object(row)
+        # Stream a shard at a time rather than reading the whole corpus into RAM.
+        return self._iter_rows(self.shard_paths())
+
+    def iter_for_worker(self, worker_id: int, num_workers: int) -> Iterator[SbolObject]:
+        """Stream only the shards assigned to one DataLoader worker.
+
+        Whole shards are partitioned across workers round-robin, so the union over
+        all workers is exactly the corpus with no record read twice.
+        """
+        paths = self.shard_paths()
+        assigned = [p for i, p in enumerate(paths) if i % num_workers == worker_id]
+        return self._iter_rows(assigned)
 
     def read_all(self) -> list[SbolObject]:
         return list(self)
 
 
-def materialize(corpus: Corpus, cache_dir: str | Path, *, force: bool = False) -> MaterializedCorpus:
-    """Stream ``corpus`` to Parquet under ``cache_dir``, keyed by a content hash."""
+def materialize(
+    corpus: Corpus, cache_dir: str | Path, *, force: bool = False, shard_size: int = DEFAULT_SHARD_SIZE
+) -> MaterializedCorpus:
+    """Stream ``corpus`` to sharded Parquet under ``cache_dir``, keyed by a content hash."""
     cache_root = Path(cache_dir)
     namespace = corpus.fingerprint()
     staging = cache_root / namespace / "staging"
@@ -82,36 +115,65 @@ def materialize(corpus: Corpus, cache_dir: str | Path, *, force: bool = False) -
     if existing is not None and not force:
         return existing
 
+    # The target dir is named by the content hash, which we only know after the
+    # full stream — so write shards to staging, then atomically rename into place.
+    if staging.exists():
+        shutil.rmtree(staging)
     staging.mkdir(parents=True, exist_ok=True)
+
     hasher = hashlib.sha256()
     count = 0
-    rows: list[dict[str, object]] = []
+    shard_names: list[str] = []
+    buffer: list[dict[str, Any]] = []
+
+    def flush() -> None:
+        if not buffer:
+            return
+        name = f"part-{len(shard_names):05d}.parquet"
+        pq.write_table(pa.Table.from_pylist(buffer, schema=_SCHEMA), staging / name)
+        shard_names.append(name)
+        buffer.clear()
+
     for obj in corpus:
-        row = _object_to_row(obj)
-        rows.append(row)
+        buffer.append(_object_to_row(obj))
         hasher.update(_hash_payload(obj))
         count += 1
+        if len(buffer) >= shard_size:
+            flush()
+    flush()
+    if not shard_names:  # an empty corpus still gets one (empty) shard
+        pq.write_table(_SCHEMA.empty_table(), staging / "part-00000.parquet")
+        shard_names.append("part-00000.parquet")
 
     fingerprint = f"{namespace}-{hasher.hexdigest()[:16]}"
     target = cache_root / namespace / fingerprint
-    target.mkdir(parents=True, exist_ok=True)
-
-    table = pa.Table.from_pylist(rows, schema=_SCHEMA) if rows else _SCHEMA.empty_table()
-    pq.write_table(table, target / "data.parquet")
-    manifest = {"fingerprint": fingerprint, "count": count, "namespace": namespace}
+    if target.exists():
+        shutil.rmtree(target)
+    staging.rename(target)
+    manifest = {"fingerprint": fingerprint, "count": count, "namespace": namespace, "shards": shard_names}
     (target / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
-    return MaterializedCorpus(path=target, fingerprint=fingerprint, count=count)
+    return MaterializedCorpus(path=target, fingerprint=fingerprint, count=count, shards=tuple(shard_names))
 
 
 def _find_complete(namespace_dir: Path) -> MaterializedCorpus | None:
     if not namespace_dir.exists():
         return None
     for child in sorted(namespace_dir.iterdir()):
+        if child.name == "staging":
+            continue
         manifest = child / "manifest.json"
-        if manifest.exists() and (child / "data.parquet").exists():
-            meta = json.loads(manifest.read_text())
-            return MaterializedCorpus(path=child, fingerprint=meta["fingerprint"], count=meta["count"])
+        if not manifest.exists():
+            continue
+        meta = json.loads(manifest.read_text())
+        candidate = MaterializedCorpus(
+            path=child,
+            fingerprint=meta["fingerprint"],
+            count=meta["count"],
+            shards=tuple(meta.get("shards", ())),
+        )
+        if candidate.shard_paths():
+            return candidate
     return None
 
 

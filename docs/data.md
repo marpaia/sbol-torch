@@ -104,12 +104,18 @@ without a populated sbol-db.
 
 ## Materialization & caching
 
-`materialize(corpus, cache_dir)` streams a corpus once into a versioned Parquet
-shard under `cache_dir/<source-fingerprint>/<content-fingerprint>/`, hashing the
+`materialize(corpus, cache_dir)` streams a corpus once into versioned Parquet
+shards under `cache_dir/<source-fingerprint>/<content-fingerprint>/`, hashing the
 contents into the fingerprint. Sequence, features, and the composition graph are
 all persisted, so a materialized corpus round-trips every modality. Re-running
-over the same data returns the cached shard — a training run is reproducible and
+over the same data returns the cached shards — a training run is reproducible and
 offline, decoupled from a live database.
+
+Writing and reading both go a shard at a time (`corpus.shard_size` rows each), so
+the cache holds a corpus larger than memory. The in-memory pipeline reads all
+shards into a list and splits by index; the streaming pipeline (`streaming: true`)
+iterates shards lazily, assigns each record to a partition by `hash` split, and —
+under a multi-worker DataLoader — gives each worker a disjoint set of shards.
 
 ```bash
 sboltorch ingest examples/configs/train_graph.yaml   # materialize without training

@@ -7,9 +7,12 @@ level — callers never hand-roll an ad-hoc shuffle.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 import numpy as np
+
+_SPLIT_NAMES = ("train", "val", "test")
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,24 @@ def make_split(
     rng.shuffle(indices)
     t, v, te = _partition(indices, ratios)
     return Split(tuple(sorted(t)), tuple(sorted(v)), tuple(sorted(te)))
+
+
+def split_of(key: str, ratios: tuple[float, float, float] = (0.8, 0.1, 0.1), seed: int = 42) -> str:
+    """Assign a stable key to ``'train'``/``'val'``/``'test'`` by hashing.
+
+    The partition depends only on the key, the ratios, and the seed — no global
+    index, no shuffle. It is identical across processes and workers and stable as
+    the corpus grows (adding records never moves existing ones), which is what
+    makes the streaming split reproducible. Uses md5 (not Python's salted
+    ``hash``) so the mapping is deterministic across runs.
+    """
+    digest = hashlib.md5(f"{seed}:{key}".encode()).hexdigest()
+    frac = int(digest[:8], 16) / 0x1_0000_0000  # first 32 bits -> [0, 1)
+    if frac < ratios[0]:
+        return "train"
+    if frac < ratios[0] + ratios[1]:
+        return "val"
+    return "test"
 
 
 def _stratify_bins(labels: list[float | int], rng: np.random.Generator, n_bins: int = 10) -> dict[int, list[int]]:

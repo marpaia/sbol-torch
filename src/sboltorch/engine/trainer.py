@@ -25,6 +25,7 @@ from torch.utils.data import DataLoader
 
 from sboltorch.config import TrainConfig
 from sboltorch.engine.batch import BatchAdapter, TensorBatchAdapter
+from sboltorch.exceptions import ConfigError
 from sboltorch.reproducibility import rng_state, set_rng_state
 from sboltorch.tasks.base import Task
 
@@ -137,6 +138,23 @@ class Trainer:
     def _trainable_params(self) -> list[torch.nn.Parameter]:
         return [p for p in self._base_model.parameters() if p.requires_grad]
 
+    def _total_steps(self, train_loader: DataLoader) -> int:
+        """Total optimizer steps for the LR schedule.
+
+        A step budget always wins. Otherwise it comes from the loader length —
+        which a streaming (IterableDataset) loader does not have, so streaming
+        runs must set ``max_steps``.
+        """
+        if self.config.max_steps:
+            return self.config.max_steps
+        try:
+            steps_per_epoch = max(1, len(train_loader) // self.config.grad_accum)  # type: ignore[arg-type]
+        except TypeError as exc:
+            raise ConfigError(
+                "train.max_steps is required when the dataloader has no length (streaming/iterable datasets)"
+            ) from exc
+        return steps_per_epoch * self.config.epochs
+
     def fit(
         self,
         train_loader: DataLoader,
@@ -148,8 +166,7 @@ class Trainer:
         self.optimizer = torch.optim.AdamW(
             self._trainable_params(), lr=self.config.lr, weight_decay=self.config.weight_decay
         )
-        steps_per_epoch = max(1, len(train_loader) // self.config.grad_accum)
-        total_steps = self.config.max_steps or steps_per_epoch * self.config.epochs
+        total_steps = self._total_steps(train_loader)
         self.scheduler = _linear_schedule(self.optimizer, warmup_steps=int(0.1 * total_steps), total_steps=total_steps)
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.scaler_enabled)
 

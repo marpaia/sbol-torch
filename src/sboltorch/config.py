@@ -41,6 +41,9 @@ class CorpusConfig(BaseModel):
     label_key: str | None = None
 
     cache_dir: str = ".sboltorch_cache"
+    # Rows per Parquet shard when materializing. Sharding keeps both writing and
+    # streaming memory-bounded over a corpus larger than RAM.
+    shard_size: int = 50_000
 
     @model_validator(mode="after")
     def _check_source(self) -> "CorpusConfig":
@@ -111,7 +114,10 @@ class EarlyStopConfig(BaseModel):
 
 
 class SplitConfig(BaseModel):
-    strategy: Literal["random", "stratified"] = "random"
+    # ``hash`` assigns each record to a partition by hashing its IRI, so the split
+    # needs no global index and is stable as the corpus grows — required for the
+    # streaming path. ``random``/``stratified`` are the in-memory index splits.
+    strategy: Literal["random", "stratified", "hash"] = "random"
     ratios: tuple[float, float, float] = (0.8, 0.1, 0.1)
 
     @model_validator(mode="after")
@@ -147,6 +153,14 @@ class WandbConfig(BaseModel):
     log_model: bool = True
 
 
+class PackingConfig(BaseModel):
+    """Token packing for language-model pretraining: concatenate tokenized
+    documents into fixed-length ``block_size`` blocks with no padding."""
+
+    enabled: bool = False
+    block_size: int = 512
+
+
 class TrainConfig(BaseModel):
     batch_size: int = 16
     epochs: int = 10
@@ -174,11 +188,16 @@ class TrainConfig(BaseModel):
 class RunConfig(BaseModel):
     seed: int = 42
     output_dir: str = "runs/default"
+    # Stream the corpus from sharded Parquet instead of loading it all into RAM.
+    # Requires a hash split and a step budget (``train.max_steps``). Sequence and
+    # MLM modalities only; the graph path stays in-memory.
+    streaming: bool = False
     corpus: CorpusConfig
     tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)
     encoder: EncoderConfig = Field(default_factory=EncoderConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
     task: TaskConfig = Field(default_factory=TaskConfig)
+    packing: PackingConfig = Field(default_factory=PackingConfig)
     splits: SplitConfig = Field(default_factory=SplitConfig)
     train: TrainConfig = Field(default_factory=TrainConfig)
     wandb: WandbConfig = Field(default_factory=WandbConfig)

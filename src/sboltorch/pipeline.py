@@ -19,7 +19,9 @@ from sboltorch.data.corpus import build_corpus
 from sboltorch.data.materialize import MaterializedCorpus, materialize
 from sboltorch.datasets.dataset import Collator, EncodedDataset
 from sboltorch.datasets.mlm_collator import MlmCollator
+from sboltorch.datasets.packing import PackedDataset
 from sboltorch.datasets.splits import Split, make_split
+from sboltorch.datasets.streaming import StreamingEncodedDataset
 from sboltorch.encoders.base import build_encoder
 from sboltorch.engine.callbacks import (
     Callback,
@@ -30,6 +32,7 @@ from sboltorch.engine.callbacks import (
     WandbLogger,
 )
 from sboltorch.engine.trainer import Trainer
+from sboltorch.exceptions import ConfigError
 from sboltorch.models import build_model
 from sboltorch.models.mlm import MaskedLMModel
 from sboltorch.reproducibility import set_seed
@@ -48,7 +51,7 @@ class PreparedData:
 def prepare_data(config: RunConfig) -> PreparedData:
     """Materialize the corpus and compute the seeded split."""
     corpus = build_corpus(config.corpus)
-    materialized = materialize(corpus, config.corpus.cache_dir)
+    materialized = materialize(corpus, config.corpus.cache_dir, shard_size=config.corpus.shard_size)
     objects = materialized.read_all()
 
     supervised = config.task.kind in ("supervised", "frozen")
@@ -100,6 +103,57 @@ def _build_sequence_run(config: RunConfig, data: PreparedData, task: Task) -> tu
     return model, train_loader, val_loader, None
 
 
+def _build_streaming_run(config: RunConfig, materialized: MaterializedCorpus, task: Task) -> tuple:
+    """Build (model, train_loader, val_loader, adapter) for the streaming path.
+
+    Train/val are streamed straight from the sharded Parquet via a hash split, so
+    no full corpus is held in memory. Packing yields fixed-size LM blocks; the
+    unpacked path encodes per object with a shuffle buffer for the train stream.
+    """
+    tokenizer = build_tokenizer(config.tokenizer)
+    ratios = config.splits.ratios
+    seed = config.seed
+    collator: Callable[[list[Any]], Any]
+
+    if config.packing.enabled:
+        if config.task.kind != "mlm":
+            raise ConfigError("packing is currently supported only for task.kind: mlm")
+        model = build_model(
+            config.model, config.task, vocab_size=tokenizer.vocab_size, pad_token_id=tokenizer.pad_token_id
+        )
+        block = config.packing.block_size
+        train_ds: object = PackedDataset(
+            materialized, tokenizer, block_size=block, which="train", ratios=ratios, seed=seed
+        )
+        val_ds: object = PackedDataset(materialized, tokenizer, block_size=block, which="val", ratios=ratios, seed=seed)
+        collator = MlmCollator(tokenizer, mlm_probability=config.task.mlm_probability)
+    else:
+        encoder = build_encoder(config.encoder, tokenizer)
+        spec = encoder.output_spec
+        model = build_model(config.model, config.task, vocab_size=spec.vocab_size, pad_token_id=spec.pad_token_id)
+        # A shuffle window over the train stream; val stays in shard order.
+        shuffle_buffer = max(64, config.train.batch_size * 64)
+        train_ds = StreamingEncodedDataset(
+            materialized, encoder, which="train", ratios=ratios, seed=seed, shuffle_buffer=shuffle_buffer
+        )
+        val_ds = StreamingEncodedDataset(materialized, encoder, which="val", ratios=ratios, seed=seed)
+        if config.task.kind == "mlm":
+            collator = MlmCollator(tokenizer, mlm_probability=config.task.mlm_probability)
+        else:
+            collator = Collator(tokenizer.pad_token_id, with_labels=True, label_dtype=task.label_dtype)
+
+    def loader(dataset: object) -> DataLoader:
+        # IterableDataset forbids shuffle=True; shuffling is the dataset's job.
+        return DataLoader(
+            dataset,  # type: ignore[arg-type]
+            batch_size=config.train.batch_size,
+            num_workers=config.train.num_workers,
+            collate_fn=collator,
+        )
+
+    return model, loader(train_ds), loader(val_ds), None
+
+
 def _build_graph_run(config: RunConfig, data: PreparedData) -> tuple:
     """Build (model, train_loader, val_loader, adapter) for the graph path."""
     from torch_geometric.loader import DataLoader as GeoLoader
@@ -131,13 +185,27 @@ def run_training(config: RunConfig, *, resume_from: str | Path | None = None) ->
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "config.resolved.yaml").write_text(config.to_yaml())
 
-    data = prepare_data(config)
     task = build_task(config.task)
+    streaming = config.streaming or config.packing.enabled
 
     if config.encoder.kind == "graph":
+        if streaming:
+            raise ConfigError("streaming/packing is not supported for the graph modality")
+        data = prepare_data(config)
         model, train_loader, val_loader, adapter = _build_graph_run(config, data)
+        corpus_ref, split_ref = data.corpus, data.split
+    elif streaming:
+        if config.splits.strategy != "hash":
+            raise ConfigError("streaming requires splits.strategy: hash")
+        corpus = build_corpus(config.corpus)
+        materialized = materialize(corpus, config.corpus.cache_dir, shard_size=config.corpus.shard_size)
+        model, train_loader, val_loader, adapter = _build_streaming_run(config, materialized, task)
+        # Streaming computes the split lazily, so partition sizes are not known up front.
+        corpus_ref, split_ref = materialized, Split((), (), ())
     else:
+        data = prepare_data(config)
         model, train_loader, val_loader, adapter = _build_sequence_run(config, data, task)
+        corpus_ref, split_ref = data.corpus, data.split
 
     metric_name, mode = task.primary_metric
     monitored = f"val_{metric_name}"
@@ -151,7 +219,7 @@ def run_training(config: RunConfig, *, resume_from: str | Path | None = None) ->
         es = config.train.early_stop
         callbacks.append(EarlyStopping(monitor=es.monitor, mode=es.mode, patience=es.patience, min_delta=es.min_delta))
     if config.wandb.enabled:
-        callbacks.append(WandbLogger(config, data.corpus, data.split, output_dir))
+        callbacks.append(WandbLogger(config, corpus_ref, split_ref, output_dir))
 
     trainer = Trainer(model, task, config.train, callbacks=callbacks, batch_adapter=adapter)
     metrics = trainer.fit(train_loader, val_loader, resume_from=resume_from)
